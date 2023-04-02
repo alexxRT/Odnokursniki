@@ -9,7 +9,7 @@ project(backend)
 find_package(Boost REQUIRED)
 
 add_executable(server server.cpp)
-add_executable(client client.cpp)
+add_executable(client client.cpp client_test.cpp)
 
 
 target_link_libraries(server PUBLIC ${Boost_LIBRARY_DIRS})

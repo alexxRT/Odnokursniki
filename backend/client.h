@@ -4,7 +4,53 @@
 #include "thread_safe_queues.h"
 #include "message.h"
 #include "connection.h"
-#include "assert.h"
+#include <assert.h>
+#include <filesystem>
+
+enum ERROR_LIST : uint32_t {
+    ENTER_SUCCESS    = 0,
+    BAD_ENTER        = 1,
+    NAME_SIZE_EXCEED = 2,
+    PASS_SIZE_EXCEED = 3,
+    UNKNOWN_FLAG     = 4,
+    TRY_ENTER_AGAIN  = 5,
+    DUMP_ERROR       = 7
+};
+
+const int REGISTER = 1;
+const int SIGN_IN  = 2;
+const int MSG_FROM = 3;
+const int MSG_TO   = 4;
+const int EFFORT_TIME = 1;
+const int MAX_EFFORTS = 5;
+
+#define CHECK_NAME(name)                        \
+do {                                            \
+    if (strlen(name.c_str()) > MAX_NAME_SIZE)   \
+        return NAME_SIZE_EXCEED;                \
+}                                               \
+while(0)
+
+#define CHECK_PASS(password)                        \
+do {                                                \
+    if (strlen(password.c_str()) >= MAX_PASS_SIZE)  \
+        return PASS_SIZE_EXCEED;                    \
+}                                                   \
+while(0)
+
+#define CHECK_MSG(msg_str)                          \
+do {                                                \
+    if (strlen(msg_str.c_str()) >= MAX_PASS_SIZE)   \
+        return PASS_SIZE_EXCEED;                    \
+}                                                   \
+while(0)
+
+int  fill_message     (std::vector<std::vector<char>>& message, ::message<msg_type>& source);
+int  fill_history     (std::vector<std::vector<char>>& message, ::message<msg_type>& source);
+int  fill_online_list (std::vector<std::vector<char>>& message, ::message<msg_type>& source);
+int  dump_history     (std::string path, std::vector<std::vector<char>>& message);
+int  dump_message     (std::string path, std::vector<std::vector<char>>& message, int FLAG);
+//void on_message_recieved(message<msg_type>& recv_msg, std::vector<std::vector<char>>& message);
 
 
 class client {
@@ -25,6 +71,8 @@ public:
     };
 
     virtual ~client(){
+        //std::filesystem::remove_all(cache_files_path.c_str());
+
         if (is_connected()){
             server_connection->disconnect();
         }
@@ -45,20 +93,32 @@ public:
             return false;
     };
 
-    bool registr(std::vector<char>& user_name, std::vector<char>& user_password) {return true;};
+    int send_message(std::string to, std::string to_send) {
+        CHECK_NAME(to);
+        CHECK_MSG (to_send);
 
-    bool sign_in(std::vector<char>& user_name, std::vector<char>& user_password) {return true;};
-
-    void send_message(std::vector<char>& to, std::vector<char>& to_send) {
         message<msg_type> msg;
         msg.header.id = msg_type::Message;
 
-        msg << name;
-        msg << to;
-        msg << to_send;
+        std::vector<char> to_send_user(MAX_NAME_SIZE, 0);
+        std::vector<char> to_send_msg (MAX_MSG_SIZE , 0);
 
-        server_connection->send(msg);
+        std::memcpy (to_send_user.data(), to.c_str(), to.size());
+        std::memcpy (to_send_msg.data() , to_send.c_str(), to_send.size());
+
+        msg << user_name;
+        msg << to_send_user;
+        msg << to_send_msg;
+
+        //server_connection->send(msg);
+
+        std::vector<std::vector<char>> message;
+        fill_message(message, msg);
+        dump_message(cache_files_path, message, MSG_TO);
+        
         std::cout << "Msg sent!\n";
+
+        return 0;
     }
 
     void see_online() {
@@ -78,85 +138,92 @@ public:
     }
 
     std::vector<std::vector<char>> recv_messages() {
-
-        if (!deq_messages_in.empty()) { // check it for "extra" safety :)
+        if (!deq_messages_in.empty()) { 
             auto msg = deq_messages_in.pop_front();
 
-            std::vector<std::vector<char>> message;
-            on_message(msg.msg, message);
+            std::vector<std::vector<char>> message; //to fill
+            //on_message_recieved(msg.msg, message);
 
             return message;
         }
         else {
-            assert(false && "pop from empty deq\n");
+            std::vector<std::vector<char>> empty_message(0);
+            return empty_message;
         }
     };
 
-    void on_message(message<msg_type>& recv_msg, std::vector<std::vector<char>>& message) {
+    int start_odnokursniki(std::string name, std::string password, int FLAG) {
+        CHECK_NAME(name);
+        CHECK_PASS(password);
 
-        switch (recv_msg.header.id) {
-            case msg_type::Message: {
-                std::vector<char> tag; //tag is for GUI only
+        user_name.resize(MAX_NAME_SIZE, 0);
+        std::memcpy(user_name.data(), name.c_str(), user_name.size());
 
-                int tag_size = strlen("Message");
-                tag.resize(tag_size);
-                message.push_back(tag);
+        std::vector<char> user_password(MAX_PASS_SIZE, 0);
+        std::memcpy(user_password.data(), password.c_str(), password.size());
 
-                fill_message(message, recv_msg);
-                dump_message(message);
-            }
-            break;
+        std::cout << "user name " << user_name.data() << "\n";
 
-            case msg_type::Online: {
-                std::vector<char> tag;
+        message<msg_type> msg;
 
-                int tag_size = strlen("Online");
-                tag.resize(tag_size);
-                message.push_back(tag);
+        if (FLAG == REGISTER)
+            msg.header.id = msg_type::Registr;
+        else if (FLAG == SIGN_IN)
+            msg.header.id = msg_type::SignIn;
+        else 
+            return UNKNOWN_FLAG;
 
-                fill_list(message, recv_msg);
-            }
-            break;
+        msg << user_name;
+        msg << user_password;
 
-            case msg_type::History: {
-                std::vector<char> tag;
+        //server_connection->send(msg);
 
-                int tag_size = strlen("History");
-                tag.resize(tag_size);
-                message.push_back(tag);
-
-                fill_history(message, recv_msg);
-                dump_history(message);
-            }
-            break;
-
-            case msg_type::Registr:{
-
-            }
-            break;
-
-            case msg_type::SignIn: {
-
-            }
-            break;
-
-            case msg_type::StatusChanged: {
-
-            }
-            break;
-
-            default:
-                std::cout << "Unknown message type recieved " << recv_msg << "\n";
-            break;
-        }
+        return wait_for_approve();
     };
 
-    void fill_message(std::vector<std::vector<char>>& message, ::message<msg_type>& source) {};
-    void fill_history(std::vector<std::vector<char>>& message, ::message<msg_type>& source) {};
-    void fill_list   (std::vector<std::vector<char>>& message, ::message<msg_type>& source) {};
-    void dump_history(std::vector<std::vector<char>>& message) {};
-    void dump_message(std::vector<std::vector<char>>& message) {};
+        int wait_for_approve() {
 
+        //wait for server reply
+        //if its too much time, i should say that smth went wrong
+        int efforts = 0;
+        while (deq_messages_in.empty() && efforts < 5) {
+            //sleep(EFFORT_TIME);
+
+            efforts ++;
+        };
+
+        if (deq_messages_in.empty())
+            return TRY_ENTER_AGAIN; //i would had rather re-entered the app :))
+
+        message<msg_type> last_message = deq_messages_in.pop_back().msg;
+        
+        switch (last_message.header.id) {
+            case msg_type::EnterSuccess:
+                return ENTER_SUCCESS;
+
+            case msg_type::EnterBad:
+                return BAD_ENTER;
+
+            default: 
+                return UNKNOWN_FLAG; //aka smth went wrong, please repeate your input
+        }
+
+        return UNKNOWN_FLAG;
+    }
+
+    int init_cache_directory() {
+        for (int i = 0; i < MAX_NAME_SIZE && user_name[i] != 0; i ++)
+            cache_files_path.push_back(user_name[i]);
+
+        cache_files_path.push_back('/');
+
+        int on_dir_create = mkdir(cache_files_path.c_str(), S_IRWXU);
+
+        if (on_dir_create != 0)
+            return UNKNOWN_FLAG;
+
+        return 0;
+    }
 
 protected:
     boost::asio::io_context               context;
@@ -167,5 +234,6 @@ protected:
 
 private:
     ts_queue<owned_message<msg_type>>     deq_messages_in;
-    std::vector<char> name;
+    std::string cache_files_path = "../";
+    std::vector<char>  user_name;
 };

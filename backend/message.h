@@ -88,9 +88,9 @@ struct message {
     }
 };
 
+//forward declaration
 template <typename T>
 class connection;
-//{};
 
 template <typename T> 
 struct owned_message

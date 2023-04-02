@@ -33,9 +33,15 @@ std::vector< std::vector<char> > users ( name max := 10)
 std::vector< std::vector<char> > messages ( "TAG_/*SIMPLEMSG_FROM_TO_MSG*/_/*ONLINE-user_names*/_/*legacy_from_from_to*/")
                                             // tag - msg type 
 
+
 int main (){
 
     client client (4784);
+
+    cliend.see_online();
+    client.sent_to(from, to , message);
+    client.recv_msg();
+
 
 
 

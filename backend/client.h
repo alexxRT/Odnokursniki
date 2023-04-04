@@ -6,23 +6,9 @@
 #include "connection.h"
 #include <assert.h>
 #include <filesystem>
+#include "message_dump.h"
 
-enum ERROR_LIST : uint32_t {
-    ENTER_SUCCESS    = 0,
-    BAD_ENTER        = 1,
-    NAME_SIZE_EXCEED = 2,
-    PASS_SIZE_EXCEED = 3,
-    UNKNOWN_FLAG     = 4,
-    TRY_ENTER_AGAIN  = 5,
-    DUMP_ERROR       = 7
-};
 
-const int REGISTER = 1;
-const int SIGN_IN  = 2;
-const int MSG_FROM = 3;
-const int MSG_TO   = 4;
-const int EFFORT_TIME = 1;
-const int MAX_EFFORTS = 5;
 
 #define CHECK_NAME(name)                        \
 do {                                            \
@@ -40,16 +26,16 @@ while(0)
 
 #define CHECK_MSG(msg_str)                          \
 do {                                                \
-    if (strlen(msg_str.c_str()) >= MAX_PASS_SIZE)   \
+    if (strlen(msg_str.c_str()) >= MAX_MSG_SIZE)   \
         return PASS_SIZE_EXCEED;                    \
 }                                                   \
 while(0)
 
-int  fill_message     (std::vector<std::vector<char>>& message, ::message<msg_type>& source);
-int  fill_history     (std::vector<std::vector<char>>& message, ::message<msg_type>& source);
-int  fill_online_list (std::vector<std::vector<char>>& message, ::message<msg_type>& source);
-int  dump_history     (std::string path, std::vector<std::vector<char>>& message);
-int  dump_message     (std::string path, std::vector<std::vector<char>>& message, int FLAG);
+int  fill_vector_message(std::vector<std::vector<char>>& message, ::message<msg_type>  source);
+int  fill_history       (std::vector<std::vector<char>>& message, ::message<msg_type>& source);
+int  fill_online_list   (std::vector<std::vector<char>>& message, ::message<msg_type>& source);
+int  dump_history       (std::string path, std::vector<std::vector<char>>& message);
+int  dump_message       (std::string path, std::vector<std::vector<char>>& message, int FLAG);
 //void on_message_recieved(message<msg_type>& recv_msg, std::vector<std::vector<char>>& message);
 
 
@@ -110,10 +96,12 @@ public:
         msg << to_send_user;
         msg << to_send_msg;
 
-        //server_connection->send(msg);
+        std::cout << "msg size " << msg << "\n";
+
+        server_connection->send(msg);
 
         std::vector<std::vector<char>> message;
-        fill_message(message, msg);
+        fill_vector_message(message, msg);
         dump_message(cache_files_path, message, MSG_TO);
         
         std::cout << "Msg sent!\n";
@@ -176,7 +164,7 @@ public:
         msg << user_name;
         msg << user_password;
 
-        //server_connection->send(msg);
+        server_connection->send(msg);
 
         return wait_for_approve();
     };
@@ -187,7 +175,7 @@ public:
         //if its too much time, i should say that smth went wrong
         int efforts = 0;
         while (deq_messages_in.empty() && efforts < 5) {
-            //sleep(EFFORT_TIME);
+            sleep(EFFORT_TIME);
 
             efforts ++;
         };
@@ -199,6 +187,7 @@ public:
         
         switch (last_message.header.id) {
             case msg_type::EnterSuccess:
+                std::cout << "Entered odnokursniki!!!\n";
                 return ENTER_SUCCESS;
 
             case msg_type::EnterBad:

@@ -93,7 +93,7 @@ protected:
         [this](std::error_code ec, std::size_t length) {
             if (!ec) {
                 if (temp_message.header.size > 0) {
-                    temp_message.body.resize(temp_message.header.size - sizeof(message_header<T>));
+                    temp_message.body.resize(temp_message.header.size - sizeof(message_header<T>)); 
                     read_body();
                     }
                     else {
@@ -115,6 +115,7 @@ protected:
                 add_to_incomming_queue();
             }
             else {
+                std::cout << ec.message() << "\n";
                 std::cout << "[" << id  << "] " << "Failed to read body\n";
                 m_socket.close();
             }

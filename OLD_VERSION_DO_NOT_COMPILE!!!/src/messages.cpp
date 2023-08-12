@@ -122,25 +122,45 @@ void delete_chat_message (chat_message_t* msg) {
     return;
 };
 
-char* create_buffer(MSG_TYPE type) {
+buffer_t* create_buffer(MSG_TYPE type) {
     if (type == SERVER) {
-        char* buffer = CALLOC(MSG_SIZE + NAME_SIZE + sizeof(MSG_TYPE), char);
+        char* buf = CALLOC(MSG_SIZE + NAME_SIZE + sizeof(MSG_TYPE), char);
+        size_t buffer_size = MSG_SIZE + NAME_SIZE + sizeof(MSG_TYPE);
+
+        buffer_t* buffer = CALLOC(1, buffer_t);
+        buffer->buf  = buf;
+        buffer->size = buffer_size;
 
         return buffer;
     }
     else if (type == TXT_MSG) {
-        char* buffer = CALLOC(2*NAME_SIZE + MSG_SIZE + sizeof(MSG_TYPE), char);
+        char* buf = CALLOC(2*NAME_SIZE + MSG_SIZE + sizeof(MSG_TYPE), char);
+        size_t buffer_size = MSG_SIZE + 2*NAME_SIZE + sizeof(MSG_TYPE);
+
+        buffer_t* buffer = CALLOC(1, buffer_t);
+        buffer->buf  = buf;
+        buffer->size = buffer_size;
 
         return buffer;
     }
     else if (type == BROADCAST) {
-        char* buffer = CALLOC(MSG_SIZE + sizeof(MSG_TYPE), char);
+        char* buf = CALLOC(MSG_SIZE + sizeof(MSG_TYPE), char);
+        size_t buffer_size = MSG_SIZE + sizeof(MSG_TYPE);
+
+        buffer_t* buffer = CALLOC(1, buffer_t);
+        buffer->buf  = buf;
+        buffer->size = buffer_size;
 
         return buffer;
 
     }
     else if (type == ERROR_MSG) {
-        char* buffer = CALLOC(sizeof(ERR_STAT) + MSG_SIZE + sizeof(MSG_TYPE), char);
+        char* buf = CALLOC(sizeof(ERR_STAT) + MSG_SIZE + sizeof(MSG_TYPE), char);
+        size_t buffer_size = MSG_SIZE + sizeof(ERR_STAT) + sizeof(MSG_TYPE);
+
+        buffer_t* buffer = CALLOC(1, buffer_t);
+        buffer->buf  = buf;
+        buffer->size = buffer_size;
 
         return buffer;
     }
@@ -149,78 +169,89 @@ char* create_buffer(MSG_TYPE type) {
 };
 
 
-void delete_type_buffer(char* type_buffer) {
+void delete_type_buffer(buffer_t* type_buffer) {
+    FREE(type_buffer->buf);
     FREE(type_buffer);
 };
 
-char* create_text_message_buffer(const char* from, const char* to, const char* msg_body) {
+buffer_t* create_text_message_buffer(const char* from, const char* to, const char* msg_body) {
     assert(from);
     assert(to);
     assert(msg_body);
 
-    char* buffer = create_buffer(TXT_MSG);
+    buffer_t* buffer = create_buffer(TXT_MSG);
     int type = TXT_MSG;
 
-    strncpy(buffer, (char*)&type, sizeof(MSG_TYPE));
+    strncpy(buffer->buf, (char*)&type, sizeof(MSG_TYPE));
 
     size_t from_size = min(strlen(from), NAME_SIZE);
-    strncpy (buffer + sizeof(MSG_TYPE), from, from_size);
+    strncpy (buffer->buf + sizeof(MSG_TYPE), from, from_size);
 
     size_t to_size = min(strlen(to), NAME_SIZE);
-    strncpy(buffer + NAME_SIZE + sizeof(MSG_TYPE), to, NAME_SIZE);
+    strncpy(buffer->buf + NAME_SIZE + sizeof(MSG_TYPE), to, NAME_SIZE);
 
     size_t msg_body_size = min(strlen(msg_body), MSG_SIZE);
-    strncpy(buffer + 2*NAME_SIZE + sizeof(MSG_TYPE), msg_body, msg_body_size);
+    strncpy(buffer->buf + 2*NAME_SIZE + sizeof(MSG_TYPE), msg_body, msg_body_size);
 
     return buffer;
 };
 
-char* create_server_message_buffer(const char* from, const char* msg_body) {
+buffer_t* create_server_message_buffer(const char* from, const char* msg_body) {
     assert(from);
     assert(msg_body);
 
-    char* buffer = create_buffer(SERVER);
+    buffer_t* buffer = create_buffer(SERVER);
     int type = SERVER;
 
-    strncpy(buffer, (char*)&type, sizeof(MSG_TYPE));
+    strncpy(buffer->buf, (char*)&type, sizeof(MSG_TYPE));
 
     size_t from_size = min(strlen(from), NAME_SIZE);
-    strncpy (buffer + sizeof(MSG_TYPE), from, from_size);
+    strncpy (buffer->buf + sizeof(MSG_TYPE), from, from_size);
 
     size_t msg_body_size = min(strlen(msg_body), MSG_SIZE);
-    strncpy(buffer + NAME_SIZE + sizeof(MSG_TYPE), msg_body, msg_body_size);
+    strncpy(buffer->buf + NAME_SIZE + sizeof(MSG_TYPE), msg_body, msg_body_size);
 
     return buffer;
 };
 
-char* create_error_message_buffer(ERR_STAT err_code, const char* error_msg) {
+buffer_t* create_error_message_buffer(ERR_STAT err_code, const char* error_msg) {
     assert(error_msg);
 
-    char* buffer = create_buffer(ERROR_MSG);
+    buffer_t* buffer = create_buffer(ERROR_MSG);
     int type = ERROR_MSG;
 
-    strncpy(buffer, (char*)&type, sizeof(MSG_TYPE));
+    strncpy(buffer->buf, (char*)&type, sizeof(MSG_TYPE));
 
-    strncpy(buffer + sizeof(MSG_TYPE), (char*)&err_code, sizeof(ERR_STAT));
+    strncpy(buffer->buf + sizeof(MSG_TYPE), (char*)&err_code, sizeof(ERR_STAT));
 
     size_t msg_body_size = min(strlen(error_msg), MSG_SIZE);
-    strncpy(buffer + sizeof(MSG_TYPE) + sizeof(ERR_STAT), error_msg, msg_body_size);
+    strncpy(buffer->buf + sizeof(MSG_TYPE) + sizeof(ERR_STAT), error_msg, msg_body_size);
 
     return buffer;
 };
 
-char* create_broadcast_message_buffer(const char* msg_body) {
+buffer_t* create_broadcast_message_buffer(const char* msg_body) {
     assert(msg_body);
 
-    char* buffer = create_buffer(BROADCAST);
+    buffer_t* buffer = create_buffer(BROADCAST);
     int type = BROADCAST;
 
-    strncpy(buffer, (char*)&type, sizeof(MSG_TYPE));
+    strncpy(buffer->buf, (char*)&type, sizeof(MSG_TYPE));
 
     size_t msg_body_size = min(strlen(msg_body), MSG_SIZE);
-    strncpy(buffer + sizeof(MSG_TYPE), msg_body, msg_body_size);
+    strncpy(buffer->buf + sizeof(MSG_TYPE), msg_body, msg_body_size);
 
     return buffer;
+};
+
+MSG_TYPE get_msg_type (const char* msg_buffer) {
+    assert(msg_buffer);
+
+    MSG_TYPE msg_type;
+
+    strncpy((char*)&msg_type, msg_buffer, sizeof(MSG_TYPE));
+
+    return msg_type;
 };
 
 

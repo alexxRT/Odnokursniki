@@ -30,6 +30,9 @@ enum ERR_STAT : int{
     SUCCESS = 0,
     CONNECTION_LOST = 1,
     INVALID_MSG = 2,
+    NAME_TAKEN = 3,
+    INCORRECT_PSWD = 4,
+    INCORRECT_USRN = 5
     //....... fill further then .......
 };
 
@@ -51,12 +54,20 @@ typedef struct message_ {
 
 } chat_message_t;
 
-char* create_text_message_buffer(const char* from, const char* to, const char* msg_body);
-char* create_server_message_buffer(const char* from, const char* msg_body);
-char* create_error_message_buffer(ERR_STAT err_code, const char* error_msg);
-char* create_broadcast_message_buffer(const char* msg_body);
+typedef struct buffer_ {
+    char* buf;
+    size_t size;
+} buffer_t;
 
-void delete_type_buffer(char* type_buffer);
+buffer_t* create_text_message_buffer(const char* from, const char* to, const char* msg_body);
+buffer_t* create_server_message_buffer(const char* from, const char* msg_body);
+buffer_t* create_error_message_buffer(ERR_STAT err_code, const char* error_msg);
+buffer_t* create_broadcast_message_buffer(const char* msg_body);
+
+MSG_TYPE get_msg_type (const char* msg_buffer); 
+
+void delete_type_buffer(buffer_t* type_buffer);
+
 
 chat_message_t* create_chat_message (MSG_TYPE type);
 void delete_chat_message (chat_message_t* msg);

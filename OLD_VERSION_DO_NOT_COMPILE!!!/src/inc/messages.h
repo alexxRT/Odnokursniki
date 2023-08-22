@@ -1,8 +1,12 @@
+#ifndef MESSAGES_H
+#define MESSAGES_H
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <assert.h>
 #include "memory.h"
+#include "chat_configs.h"
 
 //interface scratch to work with chat messages
 
@@ -14,26 +18,11 @@
 //buffer format: "msg_typefrom000000to00000000msg_body00000000"
 //               |INT_SIZE||NAME_SIZE||NAME_SIZE||   MSG_SIZE   |  <--- parse info
 
-const int MSG_SIZE = 100;
-
-//client constant -----> client.h
-const int NAME_SIZE = 10;
-
 enum MSG_TYPE : int {
     SERVER    = 0,
     TXT_MSG   = 1,
     BROADCAST = 2,
     ERROR_MSG = 3
-};
-
-enum ERR_STAT : int{
-    SUCCESS = 0,
-    CONNECTION_LOST = 1,
-    INVALID_MSG = 2,
-    NAME_TAKEN = 3,
-    INCORRECT_PSWD = 4,
-    INCORRECT_USRN = 5
-    //....... fill further then .......
 };
 
 struct message_; //forward declaration to init fill message handler
@@ -71,3 +60,5 @@ void delete_type_buffer(buffer_t* type_buffer);
 
 chat_message_t* create_chat_message (MSG_TYPE type);
 void delete_chat_message (chat_message_t* msg);
+
+#endif

@@ -1,4 +1,5 @@
 #include "chat_base.h"
+#include "chat_configs.h"
 
 
 uint64_t hash_djb2(unsigned char *str) //Dan Bernstein hash//
@@ -96,6 +97,7 @@ bool add_new_client(chat_base_t* base, uv_tcp_t* stream, const char* log_in_buf)
     return true;
 }
 
+//when log in or log out: log_in_buf, log_out_buf contain only pswd and name hashes
 bool log_in_client(chat_base_t* base, uv_tcp_t* stream, const char* log_in_buf) {
     char usr_name[NAME_SIZE] = {0};
     char password[PSWD_SIZE] = {0};
@@ -139,9 +141,4 @@ bool log_out_client(chat_base_t* base, const char* log_out_buf) {
 
     //client does not exist
     return false;
-}
-
-int main () {
-
-    return 0;
 }

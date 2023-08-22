@@ -253,9 +253,3 @@ MSG_TYPE get_msg_type (const char* msg_buffer) {
 
     return msg_type;
 };
-
-
-int main () {
-
-    return 0;
-}

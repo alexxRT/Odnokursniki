@@ -63,8 +63,7 @@ int look_up_client(chat_base_t* base, uint64_t name_hash) {
     return -1; 
 }
 
-
-bool add_new_client(chat_base_t* base, uv_tcp_t* stream, const char* log_in_buf) {
+chat_client_t* registr_client(chat_base_t* base, uv_tcp_t* st, const char* log_in_buf) {
     char usr_name[NAME_SIZE] = {0};
     char password[PSWD_SIZE] = {0};
 
@@ -74,31 +73,30 @@ bool add_new_client(chat_base_t* base, uv_tcp_t* stream, const char* log_in_buf)
     uint64_t name_hash = base->hash_client(*(unsigned char**)&usr_name);
     uint64_t pswd_hash = base->hash_client(*(unsigned char**)&password);
 
-    int client_indx = look_up_client(base, name_hash);
+    chat_client_t* client = get_client(base, name_hash);
 
     //if client allready exists with this name
-    if (client_indx >= 0)
-        return false;
+    if (client)
+        return NULL;
 
     //if base capacity is not enough to fit new user
     if (base->size >= base->max_size)
-        return false;
+        return NULL;
 
     //add new user
     chat_client_t client = {};
     client.client_stream = stream;
     client.name_hash = name_hash;
     client.pswd_hash = pswd_hash;
-    change_status(&client);
 
     base->base[base->size] = client;
     base->size ++;
 
-    return true;
+    return client;
 }
 
 //when log in or log out: log_in_buf, log_out_buf contain only pswd and name hashes
-bool log_in_client(chat_base_t* base, uv_tcp_t* stream, const char* log_in_buf) {
+chat_client_t* log_in_client(chat_base_t* base, const char* log_in_buf) {
     char usr_name[NAME_SIZE] = {0};
     char password[PSWD_SIZE] = {0};
 
@@ -108,37 +106,35 @@ bool log_in_client(chat_base_t* base, uv_tcp_t* stream, const char* log_in_buf) 
     uint64_t name_hash = base->hash_client(*(unsigned char**)&usr_name);
     uint64_t pswd_hash = base->hash_client(*(unsigned char**)&password);
 
-    int client_indx = look_up_client(base, name_hash);
+    chat_client_t* client = get_client(base, name_hash);
 
     //client found
-    if (client_indx >= 0) {
-        if (base->base[client_indx].pswd_hash == pswd_hash) {
-            change_status(&base->base[client_indx]);
-            return true;
-        }
+    if (client) {
+        //client entered//
+        if (client->pswd_hash == pswd_hash)
+            return client;
         else
-            return false;
+            return NULL;
     }
 
     //client does not exist
-    return false;
+    return NULL;
 }
 
-bool log_out_client(chat_base_t* base, const char* log_out_buf) {
+chat_client_t* log_out_client(chat_base_t* base, const char* log_out_buf) {
     char usr_name[NAME_SIZE] = {0};
 
     strncpy(usr_name, log_out_buf, NAME_SIZE);
 
     uint64_t name_hash = base->hash_client(*(unsigned char**)&usr_name);
-    int client_indx = look_up_client(base, name_hash);
+    chat_client_t* client = get_client(base, name_hash);
 
     //client found
-    if (client_indx >= 0) {
-        FREE(base->base[client_indx].client_stream);
-        change_status(&base->base[client_indx]);
-        return true;
+    if (client) {
+        FREE(client->client_stream);
+        return client;
     }
 
     //client does not exist
-    return false;
+    return NULL;
 }

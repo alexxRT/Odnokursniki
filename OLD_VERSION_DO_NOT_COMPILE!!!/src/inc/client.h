@@ -5,7 +5,8 @@
 
 
 typedef struct client_ {
-    uv_tcp_t* client_stream ;
+    uv_tcp_t* client_stream;
+    char name[NAME_SIZE];
     uint64_t  name_hash;
     uint64_t  pswd_hash;
     status status;

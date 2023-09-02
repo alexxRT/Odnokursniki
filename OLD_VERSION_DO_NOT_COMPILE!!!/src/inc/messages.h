@@ -19,7 +19,7 @@
 //               |INT_SIZE||NAME_SIZE||NAME_SIZE||   MSG_SIZE   |  <--- parse info
 
 enum MSG_TYPE : int {
-    SERVER    = 0,
+    SYSTEM    = 0,
     TXT_MSG   = 1,
     BROADCAST = 2,
     ERROR_MSG = 3
@@ -27,11 +27,11 @@ enum MSG_TYPE : int {
 
 struct message_; //forward declaration to init fill message handler
 
-typedef void (*read_handler_t)(struct message_*,  const char*);
-typedef void (*write_handler_t)(struct message_*, char*);
+typedef int (*read_handler_t)(struct message_*,  const char*);
+typedef int (*write_handler_t)(struct message_*, char*);
 
 typedef struct message_ {
-    MSG_TYPE msg_type_;
+    MSG_TYPE msg_type;
     ERR_STAT error_stat;
 
     char from[NAME_SIZE];
@@ -41,24 +41,26 @@ typedef struct message_ {
     write_handler_t write_message;
     read_handler_t  read_message;
 
+    uv_stream_t* client_endpoint = NULL;
 } chat_message_t;
 
 typedef struct buffer_ {
     char* buf;
     size_t size;
+    size_t capacity;
 } buffer_t;
 
-buffer_t* create_text_message_buffer(const char* from, const char* to, const char* msg_body);
-buffer_t* create_server_message_buffer(const char* from, const char* msg_body);
+buffer_t* create_buffer(MSG_TYPE type);
+buffer_t* create_text_message_buffer(uint64_t from, uint64_t to, const char* msg_body);
+buffer_t* create_server_message_buffer(uint64_t from, cmd_code msg_body);
 buffer_t* create_error_message_buffer(ERR_STAT err_code, const char* error_msg);
 buffer_t* create_broadcast_message_buffer(const char* msg_body);
+void destroy_type_buffer(buffer_t* type_buffer);
+
 
 MSG_TYPE get_msg_type (const char* msg_buffer); 
 
-void delete_type_buffer(buffer_t* type_buffer);
-
-
 chat_message_t* create_chat_message (MSG_TYPE type);
-void delete_chat_message (chat_message_t* msg);
+void destroy_chat_message (chat_message_t* msg);
 
 #endif

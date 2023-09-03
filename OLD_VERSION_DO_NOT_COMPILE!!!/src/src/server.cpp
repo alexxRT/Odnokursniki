@@ -3,7 +3,7 @@
 #include "server.h"
 #include "chat_configs.h"
 
-const int THREAD_NUM = 3;
+const int THREAD_NUM = 4;
 const int SEM_NUM = 4;
 
 const int SERVER_LIVE = 1;
@@ -117,15 +117,21 @@ do{                                                            \
                                                                \
 }while(0)                                                      \
 
-#define THREADS_TERMINATE()                                 \
-do {                                                        \
-    server->alive_stat = SERVER_DEAD;                       \
-                                                            \
-    PUSH_OUTGOING();                                        \
-    PUSH_INCOMING();                                        \
-                                                            \
-    return;                                                 \
-}while(0)                                                   \
+#define THREADS_TERMINATE()                                    \
+do {                                                           \
+    server->alive_stat = SERVER_DEAD;                          \
+                                                               \
+    PUSH_OUTGOING();                                           \
+    PUSH_INCOMING();                                           \
+                                                               \
+    if (uv_loop_alive(server->event_loop)) {                   \
+        uv_stop(server->event_loop)                            \
+        uv_loop_close(server->event_loop)                      \
+    }                                                          \
+                                                               \
+    return;                                                    \
+}while(0)                                                      \
+
 
 #define SEND(msg)                                           \
 do{                                                         \
@@ -332,14 +338,20 @@ void* start_backend(void* args) {
 
     if (bind_stat) {
         fprintf(stderr, "Bind error: %d\n", bind_stat);
-        THREADS_TERMINATE();
+        fprintf(stdin, "exit");
+
+        pthread_exit(NULL);
+        return NULL;
     }
 
     int listen_stat = uv_listen((uv_stream_t *)&server, 1024, on_new_connection);
 
     if (listen_stat){
         fprintf(stderr, "Listen new connections error: %d\n", listen_stat);
-        THREADS_TERMINATE();
+        fprintf(stdin, "exit");
+
+        pthread_exit(NULL);
+        return NULL;
     }
 
     server->event_loop = event_loop;
@@ -348,11 +360,16 @@ void* start_backend(void* args) {
     
     if (run_stat) {
         fprintf(stderr, "Event loop error: %d\n", run_stat);
-        THREADS_TERMINATE();
+        fprintf(stdin, "exit");
+
+        pthread_exit(NULL);
+        return NULL;
     }
 
     fprintf(stderr, "Server finalization\n");
-    THREADS_TERMINATE();
+    
+    pthread_exit(NULL);
+    return NULL;
 }
 
 //---------------------------------------------------------------------------------------------------//
@@ -522,6 +539,9 @@ void* start_interface(void* args) {
     }
 
     fprintf(stderr, "Server interface finalization...\n");
+
+    pthread_exit(NULL);
+    return NULL;
 }
 
 //------------------------------------------------------------------------------------------------------//
@@ -568,9 +588,22 @@ void* start_sender(void* args) {
     }
 
     fprintf(stderr, "Sender thread finalization")
+
+    pthread_exit(NULL);
+    return NULL;
 }
 
 //--------------------------------------------------------------------------------------------------------//
+
+//simply finish server application on command "exit"
+void* governer(void* args) {
+    char command[NAME_SIZE];
+    fscanf(stdin, "%s", command);
+
+    if (!strncmp("exit", command, strlen("exit")))
+        THREADS_TERMINATE();
+}
+
 
 void run_server(const char* ip_address, size_t port) {
     pthread_t   pid[THREAD_NUM];
@@ -582,6 +615,7 @@ void run_server(const char* ip_address, size_t port) {
     pthread_create(&pid[0], NULL, start_backend,   (void*)&args);
     pthread_create(&pid[1], NULL, start_interface, NULL);
     pthread_create(&pid[2], NULL, start_sender,    NULL);
+    pthread_create(&pid[3], NULL, governer,        NULL);
 
     for (int i = THREAD_NUM - 1; i >= 0; i--)
         pthread_join(pid[i]);

@@ -22,7 +22,7 @@ chat_base_t* create_client_base(size_t base_size);
 void destoy_client_base(chat_base_t* base);
 
 //reg_buf = "namepassword"
-chat_client_t* registr_client(chat_base_t* base, uv_tcp_t* stream, const char* reg_buf);
+chat_client_t* registr_client(chat_base_t* base, uv_stream_t* stream, const char* reg_buf);
 
 //log_in_buf = "namepassword"
 chat_client_t* log_in_client (chat_base_t* base, const char* log_in_buf);

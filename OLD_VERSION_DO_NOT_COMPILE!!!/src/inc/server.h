@@ -46,12 +46,18 @@ typedef struct lock_ {
     size_t   semid;
 }lock;
 
+
+enum class ALIVE_STAT : size_t{
+    ALIVE = 1,
+    DEAD = 0
+};
+
 typedef struct server_ {
+    ALIVE_STAT alive_stat;
     chat_base_t* client_base;
-    list* incoming_msg; 
-    list* outgoing_msg;
+    list_* incoming_msg; 
+    list_* outgoing_msg;
     lock* sem_lock;
-    size_t alive_stat;
     uv_loop_t* event_loop;
     
 }chat_server;

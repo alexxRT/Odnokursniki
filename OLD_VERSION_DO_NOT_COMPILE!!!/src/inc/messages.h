@@ -7,6 +7,7 @@
 #include <assert.h>
 #include "memory.h"
 #include "chat_configs.h"
+#include <uv.h>
 
 //interface scratch to work with chat messages
 
@@ -34,8 +35,8 @@ typedef struct message_ {
     MSG_TYPE msg_type;
     ERR_STAT error_stat;
 
-    char from[NAME_SIZE];
-    char to[NAME_SIZE];
+    uint64_t from;
+    uint64_t to;
     char msg_body[MSG_SIZE];
 
     write_handler_t write_message;
@@ -52,7 +53,7 @@ typedef struct buffer_ {
 
 buffer_t* create_buffer(MSG_TYPE type);
 buffer_t* create_text_message_buffer(uint64_t from, uint64_t to, const char* msg_body);
-buffer_t* create_server_message_buffer(uint64_t from, cmd_code msg_body);
+buffer_t* create_server_message_buffer(uint64_t from, CMD_CODE code);
 buffer_t* create_error_message_buffer(ERR_STAT err_code, const char* error_msg);
 buffer_t* create_broadcast_message_buffer(const char* msg_body);
 void destroy_type_buffer(buffer_t* type_buffer);

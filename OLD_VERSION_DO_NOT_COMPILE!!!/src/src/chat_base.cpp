@@ -1,5 +1,6 @@
 #include "chat_base.h"
 #include "chat_configs.h"
+#include "uv.h"
 
 
 uint64_t hash_djb2(unsigned char *str) //Dan Bernstein hash//
@@ -27,7 +28,7 @@ chat_base_t* create_client_base(size_t base_size) {
 
     for (size_t i = 0; i < base_size; i ++) {
         base->base[i].client_stream = NULL;
-        base->base[i].status        = OFFLINE;
+        base->base[i].status        = STATUS::OFFLINE;
         base->base[i].name_hash = 0;
         base->base[i].pswd_hash = 0;
     }
@@ -37,7 +38,8 @@ chat_base_t* create_client_base(size_t base_size) {
 
 void destoy_client_base(chat_base_t* base) {
     for (size_t i = 0; i < base->size; i ++)
-        FREE(base->base[i].client_stream);
+        if (base->base[i].status == STATUS::ONLINE)//only online users have unreleased stream handlers
+            FREE(base->base[i].client_stream);
 
     FREE(base->base);
     FREE(base);
@@ -46,10 +48,10 @@ void destoy_client_base(chat_base_t* base) {
 }
 
 void change_status(chat_client_t* client) {
-    if (client->status == ONLINE)
-        client->status = OFFLINE;
+    if (client->status == STATUS::ONLINE)
+        client->status = STATUS::OFFLINE;
     else 
-        client->status = ONLINE;
+        client->status = STATUS::ONLINE;
 
     return;
 }
@@ -63,7 +65,7 @@ int look_up_client(chat_base_t* base, uint64_t name_hash) {
     return -1; 
 }
 
-chat_client_t* registr_client(chat_base_t* base, uv_tcp_t* st, const char* log_in_buf) {
+chat_client_t* registr_client(chat_base_t* base, uv_stream_t* endpoint, const char* log_in_buf) {
     char usr_name[NAME_SIZE] = {0};
     char password[PSWD_SIZE] = {0};
 
@@ -84,12 +86,12 @@ chat_client_t* registr_client(chat_base_t* base, uv_tcp_t* st, const char* log_i
         return NULL;
 
     //add new user
-    chat_client_t client = {};
-    client.client_stream = stream;
-    client.name_hash = name_hash;
-    client.pswd_hash = pswd_hash;
+    chat_client_t new_client = {};
+    new_client.client_stream = endpoint;
+    new_client.name_hash = name_hash;
+    new_client.pswd_hash = pswd_hash;
 
-    base->base[base->size] = client;
+    base->base[base->size] = new_client;
     base->size ++;
 
     return client;
@@ -130,10 +132,8 @@ chat_client_t* log_out_client(chat_base_t* base, const char* log_out_buf) {
     chat_client_t* client = get_client(base, name_hash);
 
     //client found
-    if (client) {
-        FREE(client->client_stream);
+    if (client)
         return client;
-    }
 
     //client does not exist
     return NULL;

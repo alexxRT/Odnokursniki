@@ -1,0 +1,62 @@
+digraph {
+    rankdir=LR;
+    pack=true;
+    splines=ortho;
+    node [ shape=record ];
+    
+	Node0[label = "INDX: 0|NUM: 0|DATA: 0";];
+	Node0[color = "purple";];
+
+	Node1[label = "INDX: 1|NUM: 1|DATA: 9";];
+	Node1[color = "green";];
+
+	Node2[label = "INDX: 2|NUM: 2|DATA: 8";];
+	Node2[color = "green";];
+
+	Node3[label = "INDX: 3|NUM: 3|DATA: 777";];
+	Node3[color = "green";];
+
+	Node4[label = "INDX: 4|NUM: 4|DATA: 6";];
+	Node4[color = "green";];
+
+	Node5[label = "INDX: 5|NUM: 5|DATA: 5";];
+	Node5[color = "green";];
+
+	Node6[label = "INDX: 6|NUM: 6|DATA: 4";];
+	Node6[color = "green";];
+
+	Node7[label = "INDX: 7|NUM: 7|DATA: 1";];
+	Node7[color = "green";];
+
+	Node8[label = "INDX: 8|NUM: 8|DATA: 0";];
+	Node8[color = "green";];
+
+	Node9[label = "INDX: 9|NUM: 1|DATA: 0";];
+	Node9[color = "red";];
+
+	Node10[label = "INDX: 10|NUM: 0|DATA: 0";];
+	Node10[color = "red";];
+
+	Node0 -> Node1[color = "white";];
+	Node1 -> Node2[color = "white";];
+	Node2 -> Node3[color = "white";];
+	Node3 -> Node4[color = "white";];
+	Node4 -> Node5[color = "white";];
+	Node5 -> Node6[color = "white";];
+	Node6 -> Node7[color = "white";];
+	Node7 -> Node8[color = "white";];
+	Node8 -> Node9[color = "white";];
+	Node9 -> Node10[color = "white";];
+
+	Node0 -> Node1 [constraint = false;];
+	Node1 -> Node2 [constraint = false;];
+	Node2 -> Node3 [constraint = false;];
+	Node3 -> Node4 [constraint = false;];
+	Node4 -> Node5 [constraint = false;];
+	Node5 -> Node6 [constraint = false;];
+	Node6 -> Node7 [constraint = false;];
+	Node7 -> Node8 [constraint = false;];
+	Node8 -> Node0 [constraint = false;];
+	Node9 -> Node10 [constraint = false;];
+	Node10 -> Node9 [constraint = false;];
+}

@@ -2,8 +2,9 @@
 #define CONFIGS_H
 
 #include <string.h>
+#include <stdio.h>
 
-enum cmd_code {
+enum class CMD_CODE : int {
     LOG_IN       = 0,
     LOG_OUT      = 1,
     REGISTR      = 2,
@@ -12,7 +13,7 @@ enum cmd_code {
     UNKNOWN = -1
 };
 
-const char commands[] = {
+const char* commands[] = {
     "in$",
     "out$",
     "reg$",
@@ -20,8 +21,8 @@ const char commands[] = {
     "chstat$"
 };
 
-enum status {
-    ONLINE = 1,
+enum class STATUS : int {
+    ONLINE  = 1,
     OFFLINE = 0
 };
 
@@ -30,7 +31,7 @@ const int OUT_SIZE    = strlen("out$");
 const int REG_SIZE    = strlen("reg$");
 const int ONLINE_SIZE = strlen("online$");
 
-enum ERR_STAT : int{
+enum class ERR_STAT : int{
     SUCCESS          = 0,
     CONNECTION_LOST  = 1,
     INVALID_MSG      = 2,

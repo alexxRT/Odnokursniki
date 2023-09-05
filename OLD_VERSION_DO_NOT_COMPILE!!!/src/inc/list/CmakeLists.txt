@@ -1,0 +1,6 @@
+add_library(list STATIC src/list.cpp src/list_debug.cpp)
+
+target_include_directories(list PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/lib)
+
+
+

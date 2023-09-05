@@ -34,7 +34,7 @@ int read_server_msg(chat_message_t* msg, const char* buffer) {
 
     int read_size = NAME_SIZE + MSG_SIZE;
 
-    strncpy(msg->from, buffer, NAME_SIZE);
+    strncpy((char*)&msg->from, buffer, NAME_SIZE);
     strncpy(msg->msg_body, buffer + NAME_SIZE, MSG_SIZE);
 
     return read_size; 
@@ -45,8 +45,8 @@ int read_text_msg(chat_message_t* msg, const char* buffer) {
 
     int read_size = 2*NAME_SIZE + MSG_SIZE;
 
-    strncpy(msg->from, buffer, NAME_SIZE);
-    strncpy(msg->to,   buffer + NAME_SIZE, NAME_SIZE);
+    strncpy((char*)&msg->from, buffer, NAME_SIZE);
+    strncpy((char*)&msg->to,   buffer + NAME_SIZE, NAME_SIZE);
     strncpy(msg->msg_body, buffer + 2*NAME_SIZE, MSG_SIZE);
 
     return read_size;
@@ -79,7 +79,7 @@ int write_server_msg(chat_message_t* msg, char* buffer) {
 
     int write_size = NAME_SIZE + MSG_SIZE;
 
-    strncpy(buffer, msg->from, NAME_SIZE);
+    strncpy(buffer, (char*)&msg->from, NAME_SIZE);
     strncpy(buffer + NAME_SIZE, msg->msg_body, MSG_SIZE);
 
     return write_size; 
@@ -90,8 +90,8 @@ int write_text_msg(chat_message_t* msg, char* buffer) {
 
     int write_size = 2*NAME_SIZE + MSG_SIZE;
 
-    strncpy(buffer, msg->from, NAME_SIZE);
-    strncpy(buffer + NAME_SIZE, msg->to, NAME_SIZE);
+    strncpy(buffer, (char*)&msg->from, NAME_SIZE);
+    strncpy(buffer + NAME_SIZE, (char*)&msg->to, NAME_SIZE);
     strncpy(buffer + 2*NAME_SIZE, msg->msg_body, MSG_SIZE);
 
     return write_size;
@@ -124,7 +124,7 @@ int write_error_msg(chat_message_t* msg, char* buffer) {
 chat_message_t* create_chat_message (MSG_TYPE type) {
     chat_message_t* msg = (chat_message_t*)calloc(1, sizeof(chat_message_t));
 
-    msg->msg_type_ = type;
+    msg->msg_type = type;
     msg->read_message = read_handlers[type];
     msg->write_message = write_handlers[type];
 
@@ -133,13 +133,13 @@ chat_message_t* create_chat_message (MSG_TYPE type) {
 
 void destroy_chat_message (chat_message_t* msg) {
     bzero((void*)msg, sizeof(chat_message_t));
-    free (msg);
+    FREE(msg);
 
     return;
 };
 
 buffer_t* create_buffer(MSG_TYPE type) {
-    if (type == SERVER) {
+    if (type == MSG_TYPE::SYSTEM) {
         char* buf = CALLOC(MSG_SIZE + NAME_SIZE + sizeof(MSG_TYPE), char);
         size_t buffer_size = MSG_SIZE + NAME_SIZE + sizeof(MSG_TYPE);
 
@@ -198,9 +198,9 @@ buffer_t* create_text_message_buffer(uint64_t from, uint64_t to, const char* msg
 
     strncpy(buffer->buf, (char*)&type, sizeof(MSG_TYPE));
 
-    strncpy (buffer->buf + sizeof(MSG_TYPE), from, NAME_SIZE);
+    strncpy (buffer->buf + sizeof(MSG_TYPE), (char*)&from, NAME_SIZE);
 
-    strncpy(buffer->buf + NAME_SIZE + sizeof(MSG_TYPE), to, NAME_SIZE);
+    strncpy(buffer->buf + NAME_SIZE + sizeof(MSG_TYPE), (char*)&to, NAME_SIZE);
 
     size_t msg_body_size = min(strlen(msg_body), MSG_SIZE);
     strncpy(buffer->buf + 2*NAME_SIZE + sizeof(MSG_TYPE), msg_body, msg_body_size);
@@ -208,18 +208,20 @@ buffer_t* create_text_message_buffer(uint64_t from, uint64_t to, const char* msg
     return buffer;
 };
 
-buffer_t* create_server_message_buffer(uint64_t from, cmd_code code) {
-    assert(msg_body);
 
-    buffer_t* buffer = create_buffer(SERVER);
-    int type = SERVER;
+//refactor//
+buffer_t* create_server_message_buffer(uint64_t from, CMD_CODE code) {
+    buffer_t* buffer = create_buffer(MSG_TYPE::SYSTEM);
+    MSG_TYPE type = MSG_TYPE::SYSTEM;
 
     strncpy(buffer->buf, (char*)&type, sizeof(MSG_TYPE));
     strncpy (buffer->buf + sizeof(MSG_TYPE), (char*)&from, sizeof(from));
 
-    if (code >= 0) {
-        size_t msg_body_size = min(strlen(commands[code]), MSG_SIZE);
-        strncpy(buffer->buf + NAME_SIZE + sizeof(MSG_TYPE), commands[code], msg_body_size);
+    int code_int = static_cast<int>(code);
+
+    if (code_int >= 0) {
+        size_t msg_body_size = min(strlen(commands[code_int]), MSG_SIZE);
+        strncpy(buffer->buf + NAME_SIZE + sizeof(MSG_TYPE), commands[code_int], msg_body_size);
     }
     else 
         fprintf(stderr, "BAD CODE in %s, CODE: %d\n", __func__, code);
@@ -227,9 +229,6 @@ buffer_t* create_server_message_buffer(uint64_t from, cmd_code code) {
     return buffer;
 };
 
-buffer_t* create_server_message_buffer(uint64_t from, uiint64_t password, cmd_code code){
-
-};
 
 buffer_t* create_error_message_buffer(ERR_STAT err_code, const char* error_msg) {
     assert(error_msg);

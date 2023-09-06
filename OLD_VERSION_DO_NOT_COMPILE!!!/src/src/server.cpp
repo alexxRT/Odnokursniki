@@ -39,101 +39,10 @@ typedef struct args__{
 // 2 -- incoming try read index
 // 3 -- outgoing try read index
 
-
-//------------------------------------------THREADS SYNCHRO----------------------------------------//
-
-#define LOCK_INCOMING()                                        \
-do {                                                           \
-    server->sem_lock->sem_array->sem_op  = -1;                     \
-    server->sem_lock->sem_array->sem_flg = 0;                      \
-                                                               \
-    semop(0, server->sem_lock->sem_array, server->sem_lock->semid);    \
-                                                               \
-} while(0)                                                     \
-
-#define LOCK_OUTGOING()                                        \
-do {                                                           \
-    server->sem_lock->sem_array->sem_op  = -1;                     \
-    server->sem_lock->sem_array->sem_flg = 0;                      \
-                                                               \
-    semop(1, server->sem_lock->sem_array, server->sem_lock->semid);    \
-                                                               \
-} while(0)                                                     \
-
-#define UNLOCK_INCOMING()                                      \
-do {                                                           \
-    server->sem_lock->sem_array->sem_op  = 1;                      \
-    server->sem_lock->sem_array->sem_flg = 0;                      \
-                                                               \
-    semop(0, server->sem_lock->sem_array, server->sem_lock->semid);    \
-                                                               \
-}while(0)                                                      \
-
-#define UNLOCK_OUTGOING()                                      \
-do {                                                           \
-    server->sem_lock->sem_array->sem_op  = 1;                      \
-    server->sem_lock->sem_array->sem_flg = 0;                      \
-                                                               \
-    semop(1, server->sem_lock->sem_array, server->sem_lock->semid);    \
-                                                               \
-}while(0)                                                      \
-
-#define TRY_READ_INCOMING()                                    \
-do{                                                            \
-    server->sem_lock->sem_array->sem_op  = -1;                     \
-    server->sem_lock->sem_array->sem_flg =  0;                     \
-                                                               \
-    semop(2, server->sem_lock->sem_array, server->sem_lock->semid);    \
-                                                               \
-}while(0)                                                      \
-
-#define TRY_READ_OUTGOING()                                    \
-do{                                                            \
-    server->sem_lock->sem_array->sem_op  = -1;                     \
-    server->sem_lock->sem_array->sem_flg =  0;                     \
-                                                               \
-    semop(3, server->sem_lock->sem_array, server->sem_lock->semid);    \
-                                                               \
-}while(0)                                                      \
-
-#define PUSH_INCOMING()                                        \
-do{                                                            \
-    server->sem_lock->sem_array->sem_op  = 1;                      \
-    server->sem_lock->sem_array->sem_flg = 0;                      \
-                                                               \
-    semop(2, server->sem_lock->sem_array, server->sem_lock->semid);    \
-                                                               \
-}while(0)                                                      \
-
-#define PUSH_OUTGOING()                                        \
-do{                                                            \
-    server->sem_lock->sem_array->sem_op  = 1;                      \
-    server->sem_lock->sem_array->sem_flg = 0;                      \
-                                                               \
-    semop(3, server->sem_lock->sem_array, server->sem_lock->semid);    \
-                                                               \
-}while(0)                                                      \
-
-#define THREADS_TERMINATE()                                    \
-do {                                                           \
-    server->alive_stat = ALIVE_STAT::DEAD;                     \
-                                                               \
-    PUSH_OUTGOING();                                           \
-    PUSH_INCOMING();                                           \
-                                                               \
-    if (uv_loop_alive(server->event_loop)) {                   \
-        uv_stop(server->event_loop);                            \
-        uv_loop_close(server->event_loop);                     \
-    }                                                         \
-                                                               \
-    return NULL;                                                    \
-}while(0)                                                      \
-
-
 #define SEND(msg)                                               \
 do{                                                             \
     LOCK_OUTGOING();                                            \
-        list_insert_right(server->outgoing_msg, 0, msg);  \
+        list_insert_right(server->outgoing_msg, 0, msg);        \
         PUSH_OUTGOING();                                        \
     UNLOCK_OUTGOING();                                          \
                                                                 \
@@ -141,8 +50,8 @@ do{                                                             \
 
 #define RECV(msg)                                                 \
 do{                                                               \
-    LOCK_INCOMING();                                            \
-        list_insert_right(server->incoming_msg, 0, msg);    \
+    LOCK_INCOMING();                                              \
+        list_insert_right(server->incoming_msg, 0, msg);          \
         PUSH_INCOMING();                                          \
     UNLOCK_INCOMING();                                            \
 }while(0)                                                         \
@@ -199,6 +108,10 @@ CMD_CODE get_command (char cmd_body[]) {
 
     if (!strncmp(cmd_body + offset, "reg$", REG_SIZE)) {
         return CMD_CODE::REGISTR;
+    }
+
+    if (!strncmp(cmd_body + offset, "chstat$", STAT_SIZE)) {
+        return CMD_CODE::CHANGED_STAT;
     }
 
     return CMD_CODE::UNKNOWN;
@@ -281,7 +194,7 @@ void on_read(uv_stream_t* client_endpoint, ssize_t nread, const uv_buf_t* buf) {
     else if (nread < 0) { //error happend on connection, tear up connection
         fprintf(stderr, "Error while reading, nread: %ld\n", nread);
 
-        chat_message_t* msg = create_chat_message(ERROR_MSG);
+        chat_message_t* msg = create_chat_message(MSG_TYPE::ERROR_MSG);
         msg->client_endpoint = client_endpoint;
 
         send_error_stat(ERR_STAT::CONNECTION_LOST, msg);
@@ -384,13 +297,15 @@ void* start_backend(void* args) {
 void send_all_status_changed(chat_client_t* client) {
     assert(client != NULL);
 
-    buffer_t* buf = create_server_message_buffer(0, CMD_CODE::CHANGED_STAT);
-    fill_body(buf, client->name);
+    buffer_t* buf = create_buffer(MSG_TYPE::SYSTEM);
+    fill_server_message_buffer(buf, 0, CMD_CODE::CHANGED_STAT);
+
+    fill_body(buf, (void*)client->name, NAME_SIZE);
 
     for (int i = 0; i < server->client_base->size; i ++) {
         chat_client_t* client = server->client_base->base + i;
         if (client->status == STATUS::ONLINE) {
-            chat_message_t* msg = create_chat_message(SYSTEM);
+            chat_message_t* msg = create_chat_message(MSG_TYPE::SYSTEM);
             msg->to = client->name_hash;
             msg->write_message(msg, buf->buf);
 
@@ -403,16 +318,17 @@ void send_all_status_changed(chat_client_t* client) {
 void send_online_list(chat_client_t* client) {
     assert(client != NULL);
 
-    buffer_t* buf = create_server_message_buffer(0, CMD_CODE::ONLINE);
+    buffer_t* buf = create_buffer(MSG_TYPE::SYSTEM);
+    fill_server_message_buffer(buf, 0, CMD_CODE::ONLINE);
 
     for (int i = 0; i < server->client_base->size; i ++) {
         chat_client_t* client = server->client_base->base + i;
         if (client->status == STATUS::ONLINE)
-            fill_body(buf, client->name); //user is online
+            fill_body(buf, (void*)client->name, NAME_SIZE);
         
     }
 
-    chat_message_t* msg = create_chat_message(SYSTEM);
+    chat_message_t* msg = create_chat_message(MSG_TYPE::SYSTEM);
     msg->to = client->name_hash;
     msg->write_message(msg, buf->buf);
 
@@ -424,7 +340,7 @@ void send_online_list(chat_client_t* client) {
 ERR_STAT operate_command(CMD_CODE code, chat_message_t* msg) {
     assert(msg != NULL);
 
-    switch(code){
+    switch(code) {
         case CMD_CODE::LOG_IN: {
             chat_client_t* client = log_in_client(server->client_base, msg->msg_body + IN_SIZE);
 
@@ -482,7 +398,14 @@ ERR_STAT operate_command(CMD_CODE code, chat_message_t* msg) {
             send_online_list(client);
             fprintf(stderr, "Online list sent\n");
         }
+        break;
+
+        default:
+            fprintf(stderr, "UNKNOWN COMMAND\n");
+            fprintf(stderr, "Client full request: %s", msg->msg_body);
+        break;
     } 
+    return ERR_STAT::BAD_REQUEST;
 }
 
 ERR_STAT operate_request(chat_message_t* msg) {
@@ -491,11 +414,11 @@ ERR_STAT operate_request(chat_message_t* msg) {
     MSG_TYPE msg_type = msg->msg_type;
 
     switch (msg_type) {
-        case TXT_MSG:
+        case MSG_TYPE::TXT_MSG:
             SEND(msg);
         break;
 
-        case SYSTEM: {
+        case MSG_TYPE::SYSTEM: {
             CMD_CODE code     = get_command(msg->msg_body);
             ERR_STAT cmd_stat = operate_command(code, msg);
 
@@ -504,7 +427,7 @@ ERR_STAT operate_request(chat_message_t* msg) {
         }
         break;
 
-        case ERROR_MSG: {
+        case MSG_TYPE::ERROR_MSG: {
             ERR_STAT err_code = msg->error_stat;
 
             //accidently disconnected user
@@ -562,7 +485,7 @@ void* start_interface(void* args) {
         ERR_STAT request_stat = operate_request(msg);
 
         if (request_stat != ERR_STAT::SUCCESS) {
-            chat_message_t* err_msg = create_chat_message(ERROR_MSG);
+            chat_message_t* err_msg = create_chat_message(MSG_TYPE::ERROR_MSG);
             send_error_stat(request_stat, err_msg);
         }
     }
@@ -609,11 +532,13 @@ void* start_sender(void* args) {
                 list_delete_left(server->outgoing_msg, 0);
             }
         UNLOCK_OUTGOING();
-
-        ERR_STAT send_stat = send_message(msg);
+        
+        ERR_STAT send_stat = ERR_STAT::SUCCESS;
+        if (msg)
+            send_stat = send_message(msg);
 
         if (send_stat != ERR_STAT::SUCCESS) {
-            chat_message_t* err_msg = create_chat_message(ERROR_MSG);
+            chat_message_t* err_msg = create_chat_message(MSG_TYPE::ERROR_MSG);
             send_error_stat(send_stat, err_msg);
         }
     }
@@ -633,6 +558,8 @@ void* governer(void* args) {
 
     if (!strncmp("exit", command, strlen("exit")))
         THREADS_TERMINATE();
+    
+    return NULL;
 }
 
 

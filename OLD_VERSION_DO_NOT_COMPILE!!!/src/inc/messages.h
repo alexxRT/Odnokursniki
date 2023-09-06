@@ -19,7 +19,7 @@
 //buffer format: "msg_typefrom000000to00000000msg_body00000000"
 //               |INT_SIZE||NAME_SIZE||NAME_SIZE||   MSG_SIZE   |  <--- parse info
 
-enum MSG_TYPE : int {
+enum class MSG_TYPE : int {
     SYSTEM    = 0,
     TXT_MSG   = 1,
     BROADCAST = 2,
@@ -52,10 +52,11 @@ typedef struct buffer_ {
 } buffer_t;
 
 buffer_t* create_buffer(MSG_TYPE type);
-buffer_t* create_text_message_buffer(uint64_t from, uint64_t to, const char* msg_body);
-buffer_t* create_server_message_buffer(uint64_t from, CMD_CODE code);
-buffer_t* create_error_message_buffer(ERR_STAT err_code, const char* error_msg);
-buffer_t* create_broadcast_message_buffer(const char* msg_body);
+void fill_body(buffer_t* buffer, void* source, size_t bytes_size);
+void fill_text_message_buffer(buffer_t* buffer, uint64_t from, uint64_t to, const char* msg_body);
+void fill_server_message_buffer(buffer_t* buffer, uint64_t from, CMD_CODE code);
+void fill_error_message_buffer(buffer_t* buffer, ERR_STAT err_code, const char* error_msg);
+void fill_broadcast_message_buffer(buffer_t* buffer, const char* msg_body);
 void destroy_type_buffer(buffer_t* type_buffer);
 
 

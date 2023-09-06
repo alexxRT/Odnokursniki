@@ -4,6 +4,21 @@ size_t min (size_t num_1, size_t num_2) {
     return num_1 <= num_2 ? num_1 : num_2;
 }
 
+#ifdef DEBUG_VERSION
+#define ASSERT(buffer)                        \
+do {                                          \
+    assert(buffer);                           \
+    assert(buffer->buf);                      \
+    assert(buffer->size <= buffer->capacity); \
+    assert(buffer->size >= 0);                \
+                                              \
+} while(0)                                    \
+
+#else 
+#define ASSERT(buffer) (void*)0
+
+#endif
+
 int read_server_msg   (chat_message_t* msg, const char* buffer);
 int read_text_msg     (chat_message_t* msg, const char* buffer);
 int read_error_msg    (chat_message_t* msg, const char* buffer);
@@ -125,8 +140,8 @@ chat_message_t* create_chat_message (MSG_TYPE type) {
     chat_message_t* msg = (chat_message_t*)calloc(1, sizeof(chat_message_t));
 
     msg->msg_type = type;
-    msg->read_message = read_handlers[type];
-    msg->write_message = write_handlers[type];
+    msg->read_message = read_handlers[static_cast<int>(type)];
+    msg->write_message = write_handlers[static_cast<int>(type)];
 
     return msg;
 };
@@ -149,7 +164,7 @@ buffer_t* create_buffer(MSG_TYPE type) {
 
         return buffer;
     }
-    else if (type == TXT_MSG) {
+    else if (type == MSG_TYPE::TXT_MSG) {
         char* buf = CALLOC(2*NAME_SIZE + MSG_SIZE + sizeof(MSG_TYPE), char);
         size_t buffer_size = MSG_SIZE + 2*NAME_SIZE + sizeof(MSG_TYPE);
 
@@ -159,7 +174,7 @@ buffer_t* create_buffer(MSG_TYPE type) {
 
         return buffer;
     }
-    else if (type == BROADCAST) {
+    else if (type == MSG_TYPE::BROADCAST) {
         char* buf = CALLOC(MSG_SIZE + sizeof(MSG_TYPE), char);
         size_t buffer_size = MSG_SIZE + sizeof(MSG_TYPE);
 
@@ -170,7 +185,7 @@ buffer_t* create_buffer(MSG_TYPE type) {
         return buffer;
 
     }
-    else if (type == ERROR_MSG) {
+    else if (type == MSG_TYPE::ERROR_MSG) {
         char* buf = CALLOC(sizeof(ERR_STAT) + MSG_SIZE + sizeof(MSG_TYPE), char);
         size_t buffer_size = MSG_SIZE + sizeof(ERR_STAT) + sizeof(MSG_TYPE);
 
@@ -190,74 +205,88 @@ void destroy_type_buffer(buffer_t* type_buffer) {
     FREE(type_buffer);
 };
 
-buffer_t* create_text_message_buffer(uint64_t from, uint64_t to, const char* msg_body) {
+void fill_body(buffer_t* buffer, void* source, size_t bytes_size) {
+    ASSERT(buffer);
+
+    char* source_to_copy = (char*)source;
+    strncpy(buffer->buf + buffer->size, source_to_copy, bytes_size);
+    buffer->size += bytes_size;
+
+    ASSERT(buffer);
+}
+
+void fill_text_message_buffer(buffer_t* buffer, uint64_t from, uint64_t to, const char* msg_body) {
     assert(msg_body);
+    ASSERT(buffer);
 
-    buffer_t* buffer = create_buffer(TXT_MSG);
-    int type = TXT_MSG;
+    MSG_TYPE type = MSG_TYPE::TXT_MSG;
+    size_t msg_size = 0;
 
-    strncpy(buffer->buf, (char*)&type, sizeof(MSG_TYPE));
-
-    strncpy (buffer->buf + sizeof(MSG_TYPE), (char*)&from, NAME_SIZE);
-
-    strncpy(buffer->buf + NAME_SIZE + sizeof(MSG_TYPE), (char*)&to, NAME_SIZE);
+    fill_body(buffer, (void*)&type, sizeof(MSG_TYPE));
+    fill_body(buffer, (void*)&from, NAME_SIZE);
+    fill_body(buffer, (void*)&to,   NAME_SIZE);
 
     size_t msg_body_size = min(strlen(msg_body), MSG_SIZE);
-    strncpy(buffer->buf + 2*NAME_SIZE + sizeof(MSG_TYPE), msg_body, msg_body_size);
+    fill_body(buffer, (void*)msg_body, msg_body_size);
 
-    return buffer;
+    ASSERT(buffer);
+
+    return;
 };
 
+void fill_server_message_buffer(buffer_t* buffer, uint64_t from, CMD_CODE code) {
+    ASSERT(buffer);
 
-//refactor//
-buffer_t* create_server_message_buffer(uint64_t from, CMD_CODE code) {
-    buffer_t* buffer = create_buffer(MSG_TYPE::SYSTEM);
     MSG_TYPE type = MSG_TYPE::SYSTEM;
-
-    strncpy(buffer->buf, (char*)&type, sizeof(MSG_TYPE));
-    strncpy (buffer->buf + sizeof(MSG_TYPE), (char*)&from, sizeof(from));
+    
+    fill_body(buffer, (void*)&type, sizeof(MSG_SIZE));
+    fill_body(buffer, (void*)&from, sizeof(NAME_SIZE));
 
     int code_int = static_cast<int>(code);
 
     if (code_int >= 0) {
         size_t msg_body_size = min(strlen(commands[code_int]), MSG_SIZE);
-        strncpy(buffer->buf + NAME_SIZE + sizeof(MSG_TYPE), commands[code_int], msg_body_size);
+        fill_body(buffer, (void*)commands[code_int], msg_body_size);
     }
     else 
         fprintf(stderr, "BAD CODE in %s, CODE: %d\n", __func__, code);
 
-    return buffer;
+    ASSERT(buffer);
+
+    return;
 };
 
 
-buffer_t* create_error_message_buffer(ERR_STAT err_code, const char* error_msg) {
+void fill_error_message_buffer(buffer_t* buffer, ERR_STAT err_code, const char* error_msg) {
     assert(error_msg);
+    ASSERT(buffer);
 
-    buffer_t* buffer = create_buffer(ERROR_MSG);
-    int type = ERROR_MSG;
+    MSG_TYPE type = MSG_TYPE::ERROR_MSG;
 
-    strncpy(buffer->buf, (char*)&type, sizeof(MSG_TYPE));
-
-    strncpy(buffer->buf + sizeof(MSG_TYPE), (char*)&err_code, sizeof(ERR_STAT));
+    fill_body(buffer, (void*)&type, sizeof(MSG_SIZE));
+    fill_body(buffer, (void*)&err_code, sizeof(ERR_STAT));
 
     size_t msg_body_size = min(strlen(error_msg), MSG_SIZE);
-    strncpy(buffer->buf + sizeof(MSG_TYPE) + sizeof(ERR_STAT), error_msg, msg_body_size);
+    fill_body(buffer, (void*)error_msg, msg_body_size);
 
-    return buffer;
+    ASSERT(buffer);
+    return;
 };
 
-buffer_t* create_broadcast_message_buffer(const char* msg_body) {
+void fill_broadcast_message_buffer(buffer_t* buffer, const char* msg_body) {
     assert(msg_body);
+    ASSERT(buffer);
 
-    buffer_t* buffer = create_buffer(BROADCAST);
-    int type = BROADCAST;
+    MSG_TYPE type = MSG_TYPE::BROADCAST;
 
-    strncpy(buffer->buf, (char*)&type, sizeof(MSG_TYPE));
+    fill_body(buffer, (void*)&type, sizeof(MSG_TYPE));
 
     size_t msg_body_size = min(strlen(msg_body), MSG_SIZE);
-    strncpy(buffer->buf + sizeof(MSG_TYPE), msg_body, msg_body_size);
+    fill_body(buffer, (void*)msg_body, msg_body_size);
 
-    return buffer;
+    ASSERT(buffer);
+
+    return;
 };
 
 MSG_TYPE get_msg_type (const char* msg_buffer) {

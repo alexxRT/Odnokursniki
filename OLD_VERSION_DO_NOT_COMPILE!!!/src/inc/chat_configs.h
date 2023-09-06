@@ -3,6 +3,7 @@
 
 #include <string.h>
 #include <stdio.h>
+#include <stdlib.h>
 
 enum class CMD_CODE : int {
     LOG_IN       = 0,
@@ -10,7 +11,7 @@ enum class CMD_CODE : int {
     REGISTR      = 2,
     ONLINE       = 3,
     CHANGED_STAT = 4,
-    UNKNOWN = -1
+    UNKNOWN      = -1
 };
 
 const char* commands[] = {
@@ -30,6 +31,7 @@ const int IN_SIZE     = strlen("in$");
 const int OUT_SIZE    = strlen("out$");
 const int REG_SIZE    = strlen("reg$");
 const int ONLINE_SIZE = strlen("online$");
+const int STAT_SIZE   = strlen("chstat$");
 
 enum class ERR_STAT : int{
     SUCCESS          = 0,

@@ -1,17 +1,12 @@
 #ifndef SERVER_H
 #define SERVER_H
 
-#include "chat_base.h"
 #include "chat_configs.h"
+#include "threads_safe.h"
 #include "list.h"
 #include "uv.h"
-#include <unistd.h>
-#include <sys/ipc.h>
-#include <sys/types.h>
-#include <sys/shm.h>
-#include <sys/stat.h>
-#include <sys/sem.h>
-#include <fcntl.h>
+
+
 
 // PLAN//
 // three threads: 
@@ -39,12 +34,6 @@
 // hot parts: write-read incomming list
 //            write-read outgoing list
 
-typedef struct sembuf sembuf_;
-
-typedef struct lock_ {
-    sembuf_* sem_array;
-    size_t   semid;
-}lock;
 
 
 enum class ALIVE_STAT : size_t{

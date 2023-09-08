@@ -15,88 +15,88 @@ typedef struct lock_ {
 }lock;
 
 
-#define LOCK_INCOMING()                                                \
+#define LOCK_INCOMING( owner )                                                \
 do {                                                                   \
-    server->sem_lock->sem_array->sem_op  = -1;                         \
-    server->sem_lock->sem_array->sem_flg = 0;                          \
+    owner->sem_lock->sem_array->sem_op  = -1;                         \
+    owner->sem_lock->sem_array->sem_flg = 0;                          \
                                                                        \
-    semop(0, server->sem_lock->sem_array, server->sem_lock->semid);    \
+    semop(0, owner->sem_lock->sem_array, owner->sem_lock->semid);    \
                                                                        \
 } while(0)
 
-#define LOCK_OUTGOING()                                                \
+#define LOCK_OUTGOING( owner )                                                \
 do {                                                                   \
-    server->sem_lock->sem_array->sem_op  = -1;                         \
-    server->sem_lock->sem_array->sem_flg = 0;                          \
+    owner->sem_lock->sem_array->sem_op  = -1;                         \
+    owner->sem_lock->sem_array->sem_flg = 0;                          \
                                                                        \
-    semop(1, server->sem_lock->sem_array, server->sem_lock->semid);    \
+    semop(1, owner->sem_lock->sem_array, owner->sem_lock->semid);    \
                                                                        \
 } while(0)
 
-#define UNLOCK_INCOMING()                                              \
+#define UNLOCK_INCOMING( owner )                                              \
 do {                                                                   \
-    server->sem_lock->sem_array->sem_op  = 1;                          \
-    server->sem_lock->sem_array->sem_flg = 0;                          \
+    owner->sem_lock->sem_array->sem_op  = 1;                          \
+    owner->sem_lock->sem_array->sem_flg = 0;                          \
                                                                        \
-    semop(0, server->sem_lock->sem_array, server->sem_lock->semid);    \
+    semop(0, owner->sem_lock->sem_array, owner->sem_lock->semid);    \
                                                                        \
 }while(0)
 
-#define UNLOCK_OUTGOING()                                              \
+#define UNLOCK_OUTGOING( owner )                                              \
 do {                                                                   \
-    server->sem_lock->sem_array->sem_op  = 1;                          \
-    server->sem_lock->sem_array->sem_flg = 0;                          \
+    owner->sem_lock->sem_array->sem_op  = 1;                          \
+    owner->sem_lock->sem_array->sem_flg = 0;                          \
                                                                        \
-    semop(1, server->sem_lock->sem_array, server->sem_lock->semid);    \
+    semop(1, owner->sem_lock->sem_array, owner->sem_lock->semid);    \
                                                                        \
 }while(0)
 
-#define TRY_READ_INCOMING()                                            \
+#define TRY_READ_INCOMING( owner )                                            \
 do{                                                                    \
-    server->sem_lock->sem_array->sem_op  = -1;                         \
-    server->sem_lock->sem_array->sem_flg =  0;                         \
+    owner->sem_lock->sem_array->sem_op  = -1;                         \
+    owner->sem_lock->sem_array->sem_flg =  0;                         \
                                                                        \
-    semop(2, server->sem_lock->sem_array, server->sem_lock->semid);    \
+    semop(2, owner->sem_lock->sem_array, owner->sem_lock->semid);    \
                                                                        \
 }while(0)
 
-#define TRY_READ_OUTGOING()                                            \
+#define TRY_READ_OUTGOING( owner )                                            \
 do{                                                                    \
-    server->sem_lock->sem_array->sem_op  = -1;                         \
-    server->sem_lock->sem_array->sem_flg =  0;                         \
+    owner->sem_lock->sem_array->sem_op  = -1;                         \
+    owner->sem_lock->sem_array->sem_flg =  0;                         \
                                                                        \
-    semop(3, server->sem_lock->sem_array, server->sem_lock->semid);    \
+    semop(3, owner->sem_lock->sem_array, owner->sem_lock->semid);    \
                                                                        \
 }while(0)
 
-#define PUSH_INCOMING()                                                \
+#define PUSH_INCOMING( owner )                                                \
 do{                                                                    \
-    server->sem_lock->sem_array->sem_op  = 1;                          \
-    server->sem_lock->sem_array->sem_flg = 0;                          \
+    owner->sem_lock->sem_array->sem_op  = 1;                          \
+    owner->sem_lock->sem_array->sem_flg = 0;                          \
                                                                        \
-    semop(2, server->sem_lock->sem_array, server->sem_lock->semid);    \
+    semop(2, owner->sem_lock->sem_array, owner->sem_lock->semid);    \
                                                                        \
 }while(0)
 
-#define PUSH_OUTGOING()                                                \
+#define PUSH_OUTGOING( owner )                                                \
 do{                                                                    \
-    server->sem_lock->sem_array->sem_op  = 1;                          \
-    server->sem_lock->sem_array->sem_flg = 0;                          \
+    owner->sem_lock->sem_array->sem_op  = 1;                          \
+    owner->sem_lock->sem_array->sem_flg = 0;                          \
                                                                        \
-    semop(3, server->sem_lock->sem_array, server->sem_lock->semid);    \
+    semop(3, owner->sem_lock->sem_array, owner->sem_lock->semid);    \
                                                                        \
 }while(0)
 
-#define THREADS_TERMINATE()                                    \
+#define THREADS_TERMINATE( owner )                                    \
 do {                                                           \
-    server->alive_stat = ALIVE_STAT::DEAD;                     \
+    owner->alive_stat = ALIVE_STAT::DEAD;                     \
                                                                \
-    PUSH_OUTGOING();                                           \
-    PUSH_INCOMING();                                           \
+    PUSH_OUTGOING(owner);                                           \
+    PUSH_INCOMING(owner);                                           \
                                                                \
-    if (uv_loop_alive(server->event_loop)) {                   \
-        uv_stop(server->event_loop);                           \
-        uv_loop_close(server->event_loop);                     \
+    if (uv_loop_alive(owner->event_loop)) {                   \
+        uv_stop(owner->event_loop);                           \
+        uv_loop_close(owner->event_loop);                     \
     }                                                          \
                                                                \
     return NULL;                                               \

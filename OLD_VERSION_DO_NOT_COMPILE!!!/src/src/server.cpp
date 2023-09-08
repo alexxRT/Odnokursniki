@@ -41,19 +41,19 @@ typedef struct args__{
 
 #define SEND(msg)                                               \
 do{                                                             \
-    LOCK_OUTGOING();                                            \
+    LOCK_OUTGOING(server);                                            \
         list_insert_right(server->outgoing_msg, 0, msg);        \
-        PUSH_OUTGOING();                                        \
-    UNLOCK_OUTGOING();                                          \
+        PUSH_OUTGOING(server);                                        \
+    UNLOCK_OUTGOING(server);                                          \
                                                                 \
 }while(0)                                                       \
 
-#define RECV(msg)                                                 \
+#define RECV(msg)                                          \
 do{                                                               \
-    LOCK_INCOMING();                                              \
+    LOCK_INCOMING(server);                                              \
         list_insert_right(server->incoming_msg, 0, msg);          \
-        PUSH_INCOMING();                                          \
-    UNLOCK_INCOMING();                                            \
+        PUSH_INCOMING(server);                                          \
+    UNLOCK_INCOMING(server);                                            \
 }while(0)                                                         \
 
 #define ALIVE_STAT() static_cast<bool>(server->alive_stat)
@@ -469,18 +469,18 @@ void send_error_stat(ERR_STAT err_st, chat_message_t* err_msg) {
 }
 
 void* start_interface(void* args) {
-    while (static_cast<bool>(ALIVE_STAT())) {
+    while (ALIVE_STAT()) {
 
         //block until smth will apear to read ---> avoid useless "while" looping
-        TRY_READ_INCOMING(); 
+        TRY_READ_INCOMING(server); 
 
-        LOCK_INCOMING();
+        LOCK_INCOMING(server);
             chat_message_t* msg = NULL;
             if (server->incoming_msg->size) {
                 msg = PREV(server->incoming_msg->buffer)->data;
                 list_delete_left(server->incoming_msg, 0);
             }
-        UNLOCK_INCOMING();
+        UNLOCK_INCOMING(server);
 
         ERR_STAT request_stat = operate_request(msg);
 
@@ -524,14 +524,14 @@ void* start_sender(void* args) {
     while (ALIVE_STAT()) {
         chat_message_t* msg = NULL;
 
-        TRY_READ_OUTGOING(); //block until recieve something
+        TRY_READ_OUTGOING(server); //block until recieve something
         
-        LOCK_OUTGOING();
+        LOCK_OUTGOING(server);
             if (server->outgoing_msg->size) {
                 msg = PREV(server->outgoing_msg->buffer)->data;
                 list_delete_left(server->outgoing_msg, 0);
             }
-        UNLOCK_OUTGOING();
+        UNLOCK_OUTGOING(server);
         
         ERR_STAT send_stat = ERR_STAT::SUCCESS;
         if (msg)
@@ -557,7 +557,7 @@ void* governer(void* args) {
     fscanf(stdin, "%s", command);
 
     if (!strncmp("exit", command, strlen("exit")))
-        THREADS_TERMINATE();
+        THREADS_TERMINATE(server);
     
     return NULL;
 }

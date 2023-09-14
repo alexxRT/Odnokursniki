@@ -27,6 +27,8 @@ enum class STATUS : int {
     OFFLINE = 0
 };
 
+const int SEM_NUM = 4;
+
 const int IN_SIZE     = strlen("in$");
 const int OUT_SIZE    = strlen("out$");
 const int REG_SIZE    = strlen("reg$");

@@ -23,7 +23,7 @@ chat_base_t* create_client_base(size_t base_size) {
     base->size     = 0;
     base->max_size = base_size;
 
-    base->base = CALLOC(base_size, chat_client_t);
+    base->base = CALLOC(base_size, base_client_t);
     base->hash_client = hash_djb2;
 
     for (size_t i = 0; i < base_size; i ++) {
@@ -47,7 +47,7 @@ void destoy_client_base(chat_base_t* base) {
     return;
 }
 
-void change_status(chat_client_t* client) {
+void change_status(base_client_t* client) {
     if (client->status == STATUS::ONLINE)
         client->status = STATUS::OFFLINE;
     else 
@@ -65,7 +65,7 @@ int look_up_client(chat_base_t* base, uint64_t name_hash) {
     return -1; 
 }
 
-chat_client_t* registr_client(chat_base_t* base, uv_stream_t* endpoint, const char* log_in_buf) {
+base_client_t* registr_client(chat_base_t* base, uv_stream_t* endpoint, const char* log_in_buf) {
     char usr_name[NAME_SIZE] = {0};
     char password[PSWD_SIZE] = {0};
 
@@ -75,7 +75,7 @@ chat_client_t* registr_client(chat_base_t* base, uv_stream_t* endpoint, const ch
     uint64_t name_hash = base->hash_client(*(unsigned char**)&usr_name);
     uint64_t pswd_hash = base->hash_client(*(unsigned char**)&password);
 
-    chat_client_t* client = get_client(base, name_hash);
+    base_client_t* client = get_client(base, name_hash);
 
     //if client allready exists with this name
     if (client)
@@ -86,7 +86,7 @@ chat_client_t* registr_client(chat_base_t* base, uv_stream_t* endpoint, const ch
         return NULL;
 
     //add new user
-    chat_client_t new_client = {};
+    base_client_t new_client = {};
     new_client.client_stream = endpoint;
     new_client.name_hash = name_hash;
     new_client.pswd_hash = pswd_hash;
@@ -98,7 +98,7 @@ chat_client_t* registr_client(chat_base_t* base, uv_stream_t* endpoint, const ch
 }
 
 //when log in or log out: log_in_buf, log_out_buf contain only pswd and name hashes
-chat_client_t* log_in_client(chat_base_t* base, const char* log_in_buf) {
+base_client_t* log_in_client(chat_base_t* base, const char* log_in_buf) {
     char usr_name[NAME_SIZE] = {0};
     char password[PSWD_SIZE] = {0};
 
@@ -108,7 +108,7 @@ chat_client_t* log_in_client(chat_base_t* base, const char* log_in_buf) {
     uint64_t name_hash = base->hash_client(*(unsigned char**)&usr_name);
     uint64_t pswd_hash = base->hash_client(*(unsigned char**)&password);
 
-    chat_client_t* client = get_client(base, name_hash);
+    base_client_t* client = get_client(base, name_hash);
 
     //client found
     if (client) {
@@ -123,13 +123,13 @@ chat_client_t* log_in_client(chat_base_t* base, const char* log_in_buf) {
     return NULL;
 }
 
-chat_client_t* log_out_client(chat_base_t* base, const char* log_out_buf) {
+base_client_t* log_out_client(chat_base_t* base, const char* log_out_buf) {
     char usr_name[NAME_SIZE] = {0};
 
     strncpy(usr_name, log_out_buf, NAME_SIZE);
 
     uint64_t name_hash = base->hash_client(*(unsigned char**)&usr_name);
-    chat_client_t* client = get_client(base, name_hash);
+    base_client_t* client = get_client(base, name_hash);
 
     //client found
     if (client)

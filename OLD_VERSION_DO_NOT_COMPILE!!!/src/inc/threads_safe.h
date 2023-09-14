@@ -1,3 +1,7 @@
+#ifndef THREADS_SAFE
+#define THREADS_SAFE
+
+
 #include <unistd.h>
 #include <sys/ipc.h>
 #include <sys/types.h>
@@ -14,6 +18,14 @@ typedef struct lock_ {
     size_t   semid;
 }lock;
 
+enum class OWNER;
+typedef struct args__{
+    OWNER owner;
+    void* owner_struct;
+    const char* ip;
+    size_t port;
+
+}thread_args;
 
 #define LOCK_INCOMING( owner )                                                \
 do {                                                                   \
@@ -101,3 +113,22 @@ do {                                                           \
                                                                \
     return NULL;                                               \
 }while(0)
+
+#define SEND(owner, msg)                                               \
+do{                                                             \
+    LOCK_OUTGOING(owner);                                            \
+        list_insert_right(owner->outgoing_msg, 0, msg);        \
+        PUSH_OUTGOING(owner);                                        \
+    UNLOCK_OUTGOING(owner);                                          \
+                                                                \
+}while(0)                                                       \
+
+#define RECV(owner, msg)                                          \
+do{                                                               \
+    LOCK_INCOMING(owner);                                              \
+        list_insert_right(owner->incoming_msg, 0, msg);          \
+        PUSH_INCOMING(owner);                                          \
+    UNLOCK_INCOMING(owner);                                            \
+}while(0)    
+
+#endif //THREADS_SAFE

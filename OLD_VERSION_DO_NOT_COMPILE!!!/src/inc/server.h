@@ -3,6 +3,7 @@
 
 #include "chat_configs.h"
 #include "threads_safe.h"
+#include "chat_base.h"
 #include "list.h"
 #include "uv.h"
 
@@ -35,12 +36,6 @@
 //            write-read outgoing list
 
 
-
-enum class ALIVE_STAT : size_t{
-    ALIVE = 1,
-    DEAD = 0
-};
-
 typedef struct server_ {
     ALIVE_STAT alive_stat;
     chat_base_t* client_base;
@@ -49,7 +44,7 @@ typedef struct server_ {
     lock* sem_lock;
     uv_loop_t* event_loop;
     
-}chat_server;
+}server_t;
 
 
 

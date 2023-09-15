@@ -1,17 +1,14 @@
 #ifndef NETWORKING
 #define NETWORKING
 
+#include "threads_safe.h"
 #include "server.h"
 #include "client.h"
 #include <uv.h>
 
 //TO DO 
 //write forward declaration to avoid whole header include
-
-enum class OWNER {
-    CLIENT = 0,
-    SERVER = 1
-};
+// 
 
 typedef struct connection_ {
     OWNER owner;
@@ -21,7 +18,11 @@ typedef struct connection_ {
 
 //main libuv backend function
 //TO DO split to little functions
-void* start_networking_backend(void* args);
+void* start_networking(void* args);
+
+//sender function
+void* start_sender(void* args);
+
 
 //callbacks
 void on_acceptance      (uv_stream_t* server_endpoint, int status);

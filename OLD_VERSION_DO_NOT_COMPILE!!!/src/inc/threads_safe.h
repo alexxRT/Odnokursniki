@@ -9,7 +9,17 @@
 #include <sys/stat.h>
 #include <sys/sem.h>
 #include <fcntl.h>
+#include <list.h>
 
+#define ALIVE_STAT(owner) static_cast<int>(owner->alive_stat)
+#define FATAL_ERROR_OCCURED() fprintf(stdin, "exit")
+
+void* governer(void* args);
+
+enum class ALIVE_STAT : size_t{
+    ALIVE = 1,
+    DEAD = 0
+};
 
 typedef struct sembuf sembuf_;
 
@@ -81,7 +91,7 @@ do{                                                                    \
                                                                        \
 }while(0)
 
-#define PUSH_INCOMING( owner )                                                \
+#define RELEASE_INCOMING( owner )                                                \
 do{                                                                    \
     owner->sem_lock->sem_array->sem_op  = 1;                          \
     owner->sem_lock->sem_array->sem_flg = 0;                          \
@@ -90,7 +100,7 @@ do{                                                                    \
                                                                        \
 }while(0)
 
-#define PUSH_OUTGOING( owner )                                                \
+#define RELEASE_OUTGOING( owner )                                                \
 do{                                                                    \
     owner->sem_lock->sem_array->sem_op  = 1;                          \
     owner->sem_lock->sem_array->sem_flg = 0;                          \
@@ -114,21 +124,45 @@ do {                                                           \
     return NULL;                                               \
 }while(0)
 
-#define SEND(owner, msg)                                               \
+#define INSERT_OUTGOING(owner, msg)                                  \
 do{                                                             \
     LOCK_OUTGOING(owner);                                            \
         list_insert_right(owner->outgoing_msg, 0, msg);        \
-        PUSH_OUTGOING(owner);                                        \
+        RELEASE_OUTGOING(owner);                                        \
     UNLOCK_OUTGOING(owner);                                          \
                                                                 \
 }while(0)                                                       \
 
-#define RECV(owner, msg)                                          \
+#define INSERT_INCOMMING(owner, msg)                                          \
 do{                                                               \
     LOCK_INCOMING(owner);                                              \
         list_insert_right(owner->incoming_msg, 0, msg);          \
-        PUSH_INCOMING(owner);                                          \
+        RELEASE_INCOMING(owner);                                          \
     UNLOCK_INCOMING(owner);                                            \
 }while(0)    
+
+#define POP_OUTGOING(owner, msg)                                      \
+do {                                                                  \
+    LOCK_OUTGOING(owner);                                             \
+        if (owner->outgoing_msg->size) {                              \
+            msg = PREV(owner->outgoing_msg->buffer)->data;           \
+            list_delete_left(owner->outgoing_msg, 0);                \
+        }                                                             \
+    UNLOCK_OUTGOING(owner);                                           \
+}                                                                      \
+while(0)                                                              \
+
+#define POP_INCOMMING(owner, msg)                                     \
+do {                                                                  \
+    LOCK_OUTGOING(owner);                                             \
+        if (owner->outgoing_msg->size) {                              \
+            msg = PREV(owner->outgoing_msg->buffer)->data;           \
+            list_delete_left(owner->outgoing_msg, 0);                \
+        }                                                             \
+    UNLOCK_OUTGOING(owner);                                           \
+}                                                                      \
+while(0)                                                              \
+
+
 
 #endif //THREADS_SAFE

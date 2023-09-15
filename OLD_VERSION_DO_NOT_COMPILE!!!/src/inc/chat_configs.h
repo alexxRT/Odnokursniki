@@ -27,7 +27,13 @@ enum class STATUS : int {
     OFFLINE = 0
 };
 
+enum class OWNER {
+    CLIENT = 0,
+    SERVER = 1
+};
+
 const int SEM_NUM = 4;
+const int THREAD_NUM = 4;
 
 const int IN_SIZE     = strlen("in$");
 const int OUT_SIZE    = strlen("out$");
@@ -43,7 +49,11 @@ enum class ERR_STAT : int{
     INCORRECT_LOG_IN = 4,
     BAD_REQUEST      = 5,
     UNKNOWN_CLIENT   = 6,
-    UNKNOWN_CMD      = 7
+    UNKNOWN_CMD      = 7,
+    BIND_ERR         = 8,
+    LISTEN_ERR       = 9,
+    LOOP_EXIT_ERROR  = 10,
+    CONNECT_ERR      = 11
 
     //....... fill further then .......
 };

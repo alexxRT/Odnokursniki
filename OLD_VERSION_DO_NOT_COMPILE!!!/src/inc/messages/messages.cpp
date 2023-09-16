@@ -1,4 +1,5 @@
 #include "messages.h"
+#include "memory.h"
 
 size_t min (size_t num_1, size_t num_2) {
     return num_1 <= num_2 ? num_1 : num_2;

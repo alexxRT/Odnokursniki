@@ -14,13 +14,8 @@ enum class CMD_CODE : int {
     UNKNOWN      = -1
 };
 
-const char* commands[] = {
-    "in$",
-    "out$",
-    "reg$",
-    "online$",
-    "chstat$"
-};
+const int CMD_NUM = 5;
+const extern char* commands[CMD_NUM];
 
 enum class STATUS : int {
     ONLINE  = 1,

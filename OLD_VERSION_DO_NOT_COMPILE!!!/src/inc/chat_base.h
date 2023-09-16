@@ -3,7 +3,7 @@
 
 #include <stdlib.h>
 #include "memory.h"
-#include "client.h"
+#include "chat_configs.h"
 #include <uv.h>
 
 const int BASE_SIZE = 100;
@@ -44,17 +44,11 @@ base_client_t* log_out_client(chat_base_t* base, const char* log_out_buf);
 // 2) endpoint address, aka uv_tcp_t* (is created on connection)
 int look_up_client(chat_base_t* base, uint64_t name_hash);
 
-//TO DO:   
-int look_up_client(chat_base_t* base, uv_stream_t* endpoint) {
-    return 0;
-};
-
-base_client_t* get_client(chat_base_t* base, uint64_t name_hash) {
-    return NULL;
-};
-base_client_t* get_client(chat_base_t* base, uv_stream_t* endpoint) {
-    return NULL;
-};
+// TO DO://
+int look_up_client(chat_base_t* base, uv_stream_t* endpoint);
+base_client_t* get_client(chat_base_t* base, uint64_t name_hash);
+base_client_t* get_client(chat_base_t* base, uv_stream_t* endpoint);
+// --------- //
 
 void change_status(base_client_t* client);
 

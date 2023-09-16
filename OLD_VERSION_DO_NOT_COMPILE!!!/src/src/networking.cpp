@@ -38,7 +38,6 @@ void alloc_cb (uv_handle_t* alloc_handle, size_t suggested_size, uv_buf_t* buf) 
 
 //close handle = (uv_handle_t*)(uv_stream_t type)
 void on_close_connection(uv_handle_t* close_handle) {
-
     uv_read_stop((uv_stream_t*)close_handle);
     FREE(close_handle);
     fprintf(stderr, "<<<<<<     Connection closed     >>>>>>\n");

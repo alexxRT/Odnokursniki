@@ -9,7 +9,7 @@
 #include <sys/stat.h>
 #include <sys/sem.h>
 #include <fcntl.h>
-#include <list.h>
+#include "list.h"
 
 #define ALIVE_STAT(owner) static_cast<int>(owner->alive_stat)
 #define FATAL_ERROR_OCCURED() fprintf(stdin, "exit")
@@ -113,8 +113,8 @@ do{                                                                    \
 do {                                                           \
     owner->alive_stat = ALIVE_STAT::DEAD;                     \
                                                                \
-    PUSH_OUTGOING(owner);                                           \
-    PUSH_INCOMING(owner);                                           \
+    RELEASE_OUTGOING(owner);                                           \
+    RELEASE_INCOMING(owner);                                           \
                                                                \
     if (uv_loop_alive(owner->event_loop)) {                   \
         uv_stop(owner->event_loop);                           \

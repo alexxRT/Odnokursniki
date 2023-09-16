@@ -138,3 +138,15 @@ base_client_t* log_out_client(chat_base_t* base, const char* log_out_buf) {
     //client does not exist
     return NULL;
 }
+
+//TO DO:   
+int look_up_client(chat_base_t* base, uv_stream_t* endpoint) {
+    return 0;
+};
+
+base_client_t* get_client(chat_base_t* base, uint64_t name_hash) {
+    return NULL;
+};
+base_client_t* get_client(chat_base_t* base, uv_stream_t* endpoint) {
+    return NULL;
+};

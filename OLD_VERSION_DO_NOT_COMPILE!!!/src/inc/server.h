@@ -46,6 +46,10 @@ typedef struct server_ {
 }server_t;
 
 
+server_t* create_server (size_t client_num);
+void      destroy_server(server_t* server);
+
+void run_server_backend(server_t* server, const char* ip_address, size_t port);
 
 
 #endif

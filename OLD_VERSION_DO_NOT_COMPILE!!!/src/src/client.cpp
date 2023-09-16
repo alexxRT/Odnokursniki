@@ -109,17 +109,3 @@ void run_client_backend(client_t* client, size_t port, const char* ip) {
         pthread_join(thread_id[i], NULL);
     }
 }
-
-
-int main () {
-
-    client_t* client = create_client();
-    
-    run_client_backend(client, 7000, "127.0.0.1");
-
-    destroy_client(client);
-
-    return 0;
-}
-
-

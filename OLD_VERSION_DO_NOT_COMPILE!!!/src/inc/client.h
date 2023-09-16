@@ -21,5 +21,11 @@ typedef struct client_ {
 } client_t;
 
 
+client_t* create_client();
+void      destroy_client(client_t* client);
+
+void run_client_backend(client_t* client, size_t port, const char* ip);
+
+
 
 #endif // CLIENT_H

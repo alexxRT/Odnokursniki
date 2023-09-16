@@ -344,14 +344,3 @@ void run_server_backend(server_t* server, const char* ip_address, size_t port) {
     for (int i = THREAD_NUM - 1; i >= 0; i--)
         pthread_join(pid[i], NULL);
 }
-
-int main() {
-
-    server_t* server = create_server(10);
-
-    run_server_backend(server, "127.0.0.1", 7000);
-
-    destroy_server(server);
-
-    return 0;
-}

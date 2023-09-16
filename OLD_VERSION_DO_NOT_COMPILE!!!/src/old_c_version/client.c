@@ -800,7 +800,6 @@ void establishing_connection(char* IP_addr, int nport, uv_tcp_t** user_socket)
 int main() {
 
     uv_tcp_t* socket = (uv_tcp_t*)malloc(sizeof(uv_tcp_t)); 
-
     server_reply = malloc(MAX_SIZE);
 
     loop = uv_default_loop ();

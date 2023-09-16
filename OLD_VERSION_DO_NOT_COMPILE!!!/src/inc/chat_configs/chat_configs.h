@@ -27,7 +27,7 @@ enum class OWNER {
     SERVER = 1
 };
 
-const int SEM_NUM = 4;
+const int SEM_NUM = 2;
 const int THREAD_NUM = 4;
 
 const int IN_SIZE     = strlen("in$");

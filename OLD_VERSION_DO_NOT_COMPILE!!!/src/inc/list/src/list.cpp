@@ -16,11 +16,14 @@ list_elem* take_free_list   (list_* list);
 
 //------------------------------------------------------INIT/DESTROY---------------------------------------------------//
 
-LIST_ERR_CODE list_init (list_* list, size_t elem_num, void (*init_destructor)(list_data_t*) = NULL)
-{
-    assert (list != NULL);
+list_* list_create (size_t elem_num, void (*init_destructor)(list_data_t*) = NULL)
+{   
+    list_* list     = CALLOC(1, list_);
+    assert(list != NULL);
 
     list->buffer    = CALLOC(elem_num + 1, list_elem);
+    assert(list->buffer != NULL);
+
     list->free_head = list->buffer;
     list->capacity  = elem_num;
     list->min_capacity = elem_num;
@@ -42,7 +45,7 @@ LIST_ERR_CODE list_init (list_* list, size_t elem_num, void (*init_destructor)(l
 
     LIST_VALIDATE (list);
 
-    return LIST_ERR_CODE::SUCCESS;
+    return list;
 }
 
 LIST_ERR_CODE list_destroy (list_* list)
@@ -58,6 +61,7 @@ LIST_ERR_CODE list_destroy (list_* list)
             list->destructor(list->buffer[i].data);
 
     FREE(list->buffer);
+    FREE(list);
 
     return LIST_ERR_CODE::SUCCESS;
 }
@@ -422,8 +426,7 @@ LIST_ERR_CODE make_list_great_again (list_* list)
 {
     LIST_VALIDATE (list);
 
-    list_ new_list = {};
-    list_init (&new_list, list->capacity, list->destructor);
+    list_* new_list = list_create(list->capacity, list->destructor);
 
     int indx = 1;
     list_elem* head = list->buffer;
@@ -432,21 +435,22 @@ LIST_ERR_CODE make_list_great_again (list_* list)
     while (elem != head)
     {
         list_data_t* data = elem->data;
-        list_insert_index (&new_list, indx, data);
+        list_insert_index (new_list, indx, data);
 
         elem = NEXT(elem);
         indx ++;
     }
 
     list_elem* old_buffer = list->buffer;
-    list->buffer = new_list.buffer;
-    list->free_head = new_list.free_head;
+    list->buffer = new_list->buffer;
+    list->free_head = new_list->free_head;
 
     if (list->destructor)
         for (int i = 0; i < list->size; i ++)
-            list->destructor(list->buffer[i].data);
+            list->destructor(old_buffer[i].data);
 
     FREE (old_buffer);
+    FREE (new_list);
 
     LIST_VALIDATE (list);
 
@@ -467,27 +471,27 @@ LIST_ERR_CODE resize_up (list_* list)
 {
     LIST_VALIDATE (list);
 
-    list_ new_list = {};
-    list_init (&new_list, 2*list->capacity, list->destructor);
+    list_* new_list = list_create(2*list->capacity, list->destructor);
 
     for (size_t i = 1; i <= list->capacity; i++)
     {
         list_elem* elem = list->buffer + i;
         list_data_t* data = elem->data;
 
-        list_insert_index (&new_list, i, data);
+        list_insert_index (new_list, i, data);
     }
 
-    list->capacity = new_list.capacity;
+    list->capacity        = new_list->capacity;
     list_elem* old_buffer = list->buffer;
-    list->buffer = new_list.buffer;
-    list->free_head = new_list.free_head;
+    list->buffer          = new_list->buffer;
+    list->free_head       = new_list->free_head;
 
     if (list->destructor)
         for (int i = 0; i < list->size; i ++)
             list->destructor(old_buffer[i].data);
     
     FREE (old_buffer);
+    FREE (new_list);
 
     LIST_VALIDATE (list);
 
@@ -498,27 +502,27 @@ LIST_ERR_CODE resize_down (list_* list)
 {
     LIST_VALIDATE (list);
 
-    list_ new_list = {};
-    list_init (&new_list, list->capacity / 2, list->destructor);
+    list_* new_list = list_create(list->capacity / 2, list->destructor);
 
     for (size_t i = 1; i <= list->size; i ++) 
     {
         list_elem* elem = list->buffer + i;
         list_data_t* data = elem->data;
 
-        list_insert_index (&new_list, i, data);
+        list_insert_index (new_list, i, data);
     }
 
-    list->capacity = new_list.capacity;
+    list->capacity = new_list->capacity;
     list_elem* old_buffer = list->buffer;
-    list->buffer = new_list.buffer;
-    list->free_head = new_list.free_head;
+    list->buffer = new_list->buffer;
+    list->free_head = new_list->free_head;
 
     if (list->destructor)
         for (int i = 0; i < list->size; i ++)
             list->destructor(old_buffer[i].data);
         
     FREE (old_buffer);
+    FREE (new_list);
 
     LIST_VALIDATE (list);
 

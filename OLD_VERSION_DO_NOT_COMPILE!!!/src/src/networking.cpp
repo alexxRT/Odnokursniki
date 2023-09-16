@@ -177,7 +177,7 @@ ERR_STAT run_networking(server_t* server, const char* ip, size_t port) {
 
     server->event_loop = event_loop;
 
-    int run_stat = uv_run(event_loop, UV_RUN_DEFAULT);
+    int run_stat = 0;//uv_run(event_loop, UV_RUN_DEFAULT);
     
     if (run_stat) {
         fprintf(stderr, "<<<<<<     Error on event loop exit     >>>>>>\n");
@@ -210,7 +210,7 @@ ERR_STAT run_networking(client_t* client, const char* ip, size_t port) {
 
     client->event_loop = event_loop;
 
-    int run_stat = uv_run(event_loop, UV_RUN_DEFAULT);
+    int run_stat = 0; //uv_run(event_loop, UV_RUN_DEFAULT);
 
     if (run_stat) {
         fprintf(stderr, "<<<<<<     Error on event loop exit     >>>>>>\n");
@@ -321,7 +321,6 @@ void run_sender(server_t* server) {
         if (send_stat != ERR_STAT::SUCCESS) {
             chat_message_t* err_msg = create_chat_message(MSG_TYPE::ERROR_MSG);
             err_msg->error_stat = send_stat;
-
             INSERT_INCOMMING(server, err_msg);
         }
     }

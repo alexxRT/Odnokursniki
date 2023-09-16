@@ -51,9 +51,11 @@ client_t* create_client() {
     client_t* client = CALLOC(1, client_t);
 
     client->sem_lock = CALLOC(1, lock);
-    client->sem_lock->sem_array = CALLOC(1, sembuf_);
+    client->sem_lock->sem_array = CALLOC(1, sembuf);
     client->sem_lock->sem_array->sem_num = SEM_NUM;
-    client->sem_lock->semid = ftok("client.cpp", IPC_CREAT | 0777);
+
+    size_t key = ftok("client.cpp", 0);
+    client->sem_lock->semid = semget(key, SEM_NUM, 0777 | IPC_CREAT);
 
     assert(client->sem_lock->semid > 0);
 
@@ -63,8 +65,8 @@ client_t* create_client() {
         fprintf(stderr, "-----------------------------------------\n\n");
     #endif
 
-    list_init(client->incoming_msg, 10, destroy_chat_message);
-    list_init(client->outgoing_msg, 10, destroy_chat_message);
+    client->incoming_msg = list_create(10, destroy_chat_message);
+    client->outgoing_msg = list_create(10, destroy_chat_message);
     
     client->alive_stat = ALIVE_STAT::ALIVE;
     client->status     = STATUS::OFFLINE;
@@ -84,8 +86,17 @@ void destroy_client(client_t* client) {
     FREE(client);
 }
 
-void* start_interface(void* args) {
+void* start_client_interface(void* args) {
     //TO DO//
+    thread_args* thr_args = (thread_args*)args;
+    client_t* client = (client_*)thr_args->owner_struct;
+
+
+    while (ALIVE_STAT(client)) {
+        TRY_READ_INCOMING(client);
+    }
+
+    fprintf(stderr, "<<<<<<     Interface incomplteted, TO DO     >>>>>>\n");
     return NULL;
 }
 
@@ -99,13 +110,29 @@ void run_client_backend(client_t* client, size_t port, const char* ip) {
     args.port = port; 
 
     pthread_t thread_id[THREAD_NUM];
+
+    int lock_stat = 0;
+    lock_stat = init_incoming_lock();
+    if (lock_stat) {
+        fprintf(stderr, "Terminating backend before it started\n");
+        return;
+    }
+
+    lock_stat = init_outgoing_lock();
+    if (lock_stat) {
+        fprintf(stderr, "Terminating backend before it started\n");
+        return;
+    }
     
     pthread_create(&thread_id[0], NULL, start_networking, (void*)&args);
-    pthread_create(&thread_id[1], NULL, start_interface,  (void*)&args);
+    pthread_create(&thread_id[1], NULL, start_client_interface,  (void*)&args);
     pthread_create(&thread_id[2], NULL, start_sender,     (void*)&args);
     pthread_create(&thread_id[3], NULL, governer,         (void*)&args);
-
+    
     for (int i = THREAD_NUM - 1; i >= 0; i --) {
         pthread_join(thread_id[i], NULL);
     }
+
+    destroy_incoming_lock();
+    destroy_outgoing_lock();
 }

@@ -56,7 +56,7 @@ typedef enum class ERROR_CODES
 } LIST_ERR_CODE;
 
 
-LIST_ERR_CODE list_init     (list_* list, size_t elem_num, void (*init_destructor)(list_data_t*));
+list_*        list_create   (size_t elem_num, void (*init_destructor)(list_data_t*));
 LIST_ERR_CODE list_destroy  (list_* list);
 
 LIST_ERR_CODE list_insert_right (list_* list, size_t id, list_data_t* data);

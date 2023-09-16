@@ -96,7 +96,7 @@ server_t* create_server(size_t client_num) {
     server->alive_stat = ALIVE_STAT::ALIVE;
 
     server->sem_lock            = CALLOC(1, lock);
-    server->sem_lock->sem_array = CALLOC(1, sembuf_);
+    server->sem_lock->sem_array = CALLOC(SEM_NUM, sembuf);
 
     server->sem_lock->sem_array->sem_num = SEM_NUM;
 
@@ -107,8 +107,8 @@ server_t* create_server(size_t client_num) {
 
     server->sem_lock->semid = sem_id;
 
-    list_init(server->incoming_msg, 10, destroy_chat_message);
-    list_init(server->outgoing_msg, 10, destroy_chat_message);
+    server->incoming_msg = list_create(10, destroy_chat_message);
+    server->outgoing_msg = list_create(10, destroy_chat_message);
 
     return server;
 }
@@ -293,32 +293,26 @@ ERR_STAT operate_request(server_t* server, chat_message_t* msg) {
 
 void* start_interface(void* args) {
     thread_args* thr_args = (thread_args*)args;
-    server_t* server = (server_t*)thr_args->owner_struct;
+    server_t* server = (server_t*)(thr_args->owner_struct);
 
     while (ALIVE_STAT(server)) {
-
+        chat_message_t* msg = NULL;
         //block until smth will apear to read ---> avoid useless "while" looping
         TRY_READ_INCOMING(server); 
+        POP_INCOMMING(server, msg);
 
-        LOCK_INCOMING(server);
-            chat_message_t* msg = NULL;
-            if (server->incoming_msg->size) {
-                msg = PREV(server->incoming_msg->buffer)->data; 
-                list_delete_left(server->incoming_msg, 0);
-            }
-        UNLOCK_INCOMING(server);
-
-        ERR_STAT request_stat = operate_request(server, msg);
+        ERR_STAT request_stat = ERR_STAT::SUCCESS;
+        if (msg)
+            request_stat = operate_request(server, msg);
 
         if (request_stat != ERR_STAT::SUCCESS) {
             chat_message_t* err_msg = create_chat_message(MSG_TYPE::ERROR_MSG);
             err_msg->error_stat = request_stat;
-            
             INSERT_OUTGOING(server, err_msg);
         }
     }
 
-    fprintf(stderr, "Server interface finalization...\n");
+    fprintf(stderr, "<<<<<<     Interface finalization     >>>>>>\n");
 
     pthread_exit(NULL);
     return NULL;
@@ -336,6 +330,19 @@ void run_server_backend(server_t* server, const char* ip_address, size_t port) {
     args.owner_struct = (void*)server;
     args.owner = OWNER::SERVER;
 
+    int lock_stat = 0;
+    lock_stat = init_incoming_lock();
+    if (lock_stat) {
+        fprintf(stderr, "Terminating backend before it started\n");
+        return;
+    }
+
+    lock_stat = init_outgoing_lock();
+    if (lock_stat) {
+        fprintf(stderr, "Terminating backend before it started\n");
+        return;
+    }
+
     pthread_create(&pid[0], NULL, start_networking,(void*)&args);
     pthread_create(&pid[1], NULL, start_interface, (void*)&args);
     pthread_create(&pid[2], NULL, start_sender,    (void*)&args);
@@ -343,4 +350,7 @@ void run_server_backend(server_t* server, const char* ip_address, size_t port) {
 
     for (int i = THREAD_NUM - 1; i >= 0; i--)
         pthread_join(pid[i], NULL);
+
+    destroy_incoming_lock();
+    destroy_outgoing_lock();
 }

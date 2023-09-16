@@ -6,6 +6,8 @@
 //simply finish server application on command "exit"
 void* governer(void* args) {
     char command[NAME_SIZE];
+
+    fflush(stdin);
     fscanf(stdin, "%s", command);
 
     thread_args* thr_args = (thread_args*)args;
@@ -22,8 +24,36 @@ void* governer(void* args) {
         else 
             fprintf (stderr, "Unknown owner: %d\n", thr_args->owner);
     }
-    else 
-        fprintf (stderr, "<<<<<<     Governer terminated ACCIDENTLY     >>>>>>\n\n");
+    else {
+        fprintf (stderr, "<<<<<<     Governer terminated ACCIDENTLY     >>>>>>\n");
+        fprintf (stderr, "!!!Non of synchro on exit was performed!!!\n\n");
+    }
     
     return NULL;
+}
+
+
+
+int init_incoming_lock() {
+    int init_stat = pthread_mutex_init(&lock_incoming, NULL);
+
+    return init_stat;
+}
+
+int init_outgoing_lock() {
+    int init_stat = pthread_mutex_init(&lock_outgoing, NULL);
+
+    return init_stat;
+}
+
+void destroy_incoming_lock() {
+    pthread_mutex_destroy(&lock_incoming);
+
+    return;
+}
+
+void destroy_outgoing_lock() {
+    pthread_mutex_destroy(&lock_outgoing);
+
+    return;
 }

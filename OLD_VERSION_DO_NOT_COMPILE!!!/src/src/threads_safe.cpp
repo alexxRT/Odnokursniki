@@ -31,29 +31,3 @@ void* governer(void* args) {
     
     return NULL;
 }
-
-
-
-int init_incoming_lock() {
-    int init_stat = pthread_mutex_init(&lock_incoming, NULL);
-
-    return init_stat;
-}
-
-int init_outgoing_lock() {
-    int init_stat = pthread_mutex_init(&lock_outgoing, NULL);
-
-    return init_stat;
-}
-
-void destroy_incoming_lock() {
-    pthread_mutex_destroy(&lock_incoming);
-
-    return;
-}
-
-void destroy_outgoing_lock() {
-    pthread_mutex_destroy(&lock_outgoing);
-
-    return;
-}

@@ -38,34 +38,6 @@ typedef struct args__{
 
 }thread_args;
 
-static pthread_mutex_t lock_incoming;
-static pthread_mutex_t lock_outgoing;
-
-int  init_incoming_lock();
-int  init_outgoing_lock();
-void destroy_incoming_lock();
-void destroy_outgoing_lock();
-
-#define LOCK_INCOMING( owner )                                                \
-do {                                                                   \
-    pthread_mutex_lock(&lock_incoming);                                 \
-                                                                       \
-} while(0)
-
-#define LOCK_OUTGOING( owner )                                                \
-do {                                                                   \
-    pthread_mutex_lock(&lock_outgoing);                                 \
-} while(0)
-
-#define UNLOCK_INCOMING( owner )                                              \
-do {                                                                   \
-    pthread_mutex_unlock(&lock_incoming);                                   \
-}while(0)
-
-#define UNLOCK_OUTGOING( owner )                                              \
-do {                                                                   \
-    pthread_mutex_unlock(&lock_outgoing);                                 \
-}while(0)
 
 #define TRY_READ_INCOMING( owner )                                            \
 do{                                                                    \
@@ -134,44 +106,6 @@ do {                                                           \
     return NULL;                                               \
 }while(0)
 
-#define INSERT_OUTGOING(owner, msg)                                  \
-do{                                                             \
-    LOCK_OUTGOING(owner);                                            \
-        list_insert_right(owner->outgoing_msg, 0, msg);        \
-        RELEASE_OUTGOING(owner);                                        \
-    UNLOCK_OUTGOING(owner);                                          \
-                                                                \
-}while(0)                                                       \
-
-#define INSERT_INCOMMING(owner, msg)                                          \
-do{                                                               \
-    LOCK_INCOMING(owner);                                              \
-        list_insert_right(owner->incoming_msg, 0, msg);          \
-        RELEASE_INCOMING(owner);                                          \
-    UNLOCK_INCOMING(owner);                                            \
-}while(0)    
-
-#define POP_OUTGOING(owner, msg)                                      \
-do {                                                                  \
-    LOCK_OUTGOING(owner);                                             \
-        if (owner->outgoing_msg->size) {                              \
-            msg = PREV(owner->outgoing_msg->buffer)->data;           \
-            list_delete_left(owner->outgoing_msg, 0);                \
-        }                                                             \
-    UNLOCK_OUTGOING(owner);                                           \
-}                                                                      \
-while(0)                                                              \
-
-#define POP_INCOMMING(owner, msg)                                     \
-do {                                                                  \
-    LOCK_INCOMING(owner);                                             \
-        if (owner->outgoing_msg->size) {                              \
-            msg = PREV(owner->outgoing_msg->buffer)->data;           \
-            list_delete_left(owner->outgoing_msg, 0);                \
-        }                                                             \
-    UNLOCK_INCOMING(owner);                                           \
-}                                                                      \
-while(0)                                                              \
 
 
 

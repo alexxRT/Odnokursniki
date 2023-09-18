@@ -65,8 +65,8 @@ client_t* create_client() {
         fprintf(stderr, "-----------------------------------------\n\n");
     #endif
 
-    client->incoming_msg = list_create(10, destroy_chat_message);
-    client->outgoing_msg = list_create(10, destroy_chat_message);
+    client->incoming_msg = list_create(10, THREAD_MODE::THREAD_SAFE, destroy_chat_message);
+    client->outgoing_msg = list_create(10, THREAD_MODE::THREAD_SAFE, destroy_chat_message);
     
     client->alive_stat = ALIVE_STAT::ALIVE;
     client->status     = STATUS::OFFLINE;
@@ -110,19 +110,6 @@ void run_client_backend(client_t* client, size_t port, const char* ip) {
     args.port = port; 
 
     pthread_t thread_id[THREAD_NUM];
-
-    int lock_stat = 0;
-    lock_stat = init_incoming_lock();
-    if (lock_stat) {
-        fprintf(stderr, "Terminating backend before it started\n");
-        return;
-    }
-
-    lock_stat = init_outgoing_lock();
-    if (lock_stat) {
-        fprintf(stderr, "Terminating backend before it started\n");
-        return;
-    }
     
     pthread_create(&thread_id[0], NULL, start_networking, (void*)&args);
     pthread_create(&thread_id[1], NULL, start_client_interface,  (void*)&args);
@@ -132,7 +119,4 @@ void run_client_backend(client_t* client, size_t port, const char* ip) {
     for (int i = THREAD_NUM - 1; i >= 0; i --) {
         pthread_join(thread_id[i], NULL);
     }
-
-    destroy_incoming_lock();
-    destroy_outgoing_lock();
 }

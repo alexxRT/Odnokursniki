@@ -107,8 +107,8 @@ server_t* create_server(size_t client_num) {
 
     server->sem_lock->semid = sem_id;
 
-    server->incoming_msg = list_create(10, destroy_chat_message);
-    server->outgoing_msg = list_create(10, destroy_chat_message);
+    server->incoming_msg = list_create(10, THREAD_MODE::THREAD_SAFE, destroy_chat_message);
+    server->outgoing_msg = list_create(10, THREAD_MODE::THREAD_SAFE, destroy_chat_message);
 
     return server;
 }
@@ -135,12 +135,14 @@ void send_all_status_changed(server_t* server, base_client_t* client) {
 
     for (int i = 0; i < server->client_base->size; i ++) {
         base_client_t* client = server->client_base->base + i;
+
         if (client->status == STATUS::ONLINE) {
             chat_message_t* msg = create_chat_message(MSG_TYPE::SYSTEM);
             msg->to = client->name_hash;
             msg->write_message(msg, buf->buf);
 
-            INSERT_OUTGOING(server, msg);
+            list_insert_right(server->outgoing_msg, 0, msg);
+            RELEASE_OUTGOING(server);
         }
     }
     destroy_type_buffer(buf);
@@ -163,7 +165,8 @@ void send_online_list(server_t* server, base_client_t* client) {
     msg->to = client->name_hash;
     msg->write_message(msg, buf->buf);
 
-    INSERT_OUTGOING(server, msg);
+    list_insert_right(server->outgoing_msg, 0, msg);
+    RELEASE_OUTGOING(server);
 
     destroy_type_buffer(buf);
 }
@@ -246,7 +249,8 @@ ERR_STAT operate_request(server_t* server, chat_message_t* msg) {
 
     switch (msg_type) {
         case MSG_TYPE::TXT_MSG:
-            INSERT_OUTGOING(server, msg);
+            list_insert_right(server->outgoing_msg, 0, msg);
+            RELEASE_OUTGOING(server);
         break;
 
         case MSG_TYPE::SYSTEM: {
@@ -297,9 +301,12 @@ void* start_interface(void* args) {
 
     while (ALIVE_STAT(server)) {
         chat_message_t* msg = NULL;
+
         //block until smth will apear to read ---> avoid useless "while" looping
-        TRY_READ_INCOMING(server); 
-        POP_INCOMMING(server, msg);
+        TRY_READ_INCOMING(server);
+
+        //thread_safe
+        list_delete_left(server->incoming_msg, 0, msg);
 
         ERR_STAT request_stat = ERR_STAT::SUCCESS;
         if (msg)
@@ -308,7 +315,9 @@ void* start_interface(void* args) {
         if (request_stat != ERR_STAT::SUCCESS) {
             chat_message_t* err_msg = create_chat_message(MSG_TYPE::ERROR_MSG);
             err_msg->error_stat = request_stat;
-            INSERT_OUTGOING(server, err_msg);
+            
+            list_insert_right(server->outgoing_msg, 0, msg);
+            RELEASE_OUTGOING(server);
         }
     }
 
@@ -330,19 +339,6 @@ void run_server_backend(server_t* server, const char* ip_address, size_t port) {
     args.owner_struct = (void*)server;
     args.owner = OWNER::SERVER;
 
-    int lock_stat = 0;
-    lock_stat = init_incoming_lock();
-    if (lock_stat) {
-        fprintf(stderr, "Terminating backend before it started\n");
-        return;
-    }
-
-    lock_stat = init_outgoing_lock();
-    if (lock_stat) {
-        fprintf(stderr, "Terminating backend before it started\n");
-        return;
-    }
-
     pthread_create(&pid[0], NULL, start_networking,(void*)&args);
     pthread_create(&pid[1], NULL, start_interface, (void*)&args);
     pthread_create(&pid[2], NULL, start_sender,    (void*)&args);
@@ -351,6 +347,4 @@ void run_server_backend(server_t* server, const char* ip_address, size_t port) {
     for (int i = THREAD_NUM - 1; i >= 0; i--)
         pthread_join(pid[i], NULL);
 
-    destroy_incoming_lock();
-    destroy_outgoing_lock();
 }

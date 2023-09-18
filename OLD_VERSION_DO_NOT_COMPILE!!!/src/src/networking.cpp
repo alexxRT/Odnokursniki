@@ -52,10 +52,14 @@ void on_read(uv_stream_t* client_endpoint, ssize_t nread, const uv_buf_t* buf) {
             int read_size = (msg->read_message)(msg, buf->base);
             msg->client_endpoint = client_endpoint;
 
-            if (connection->owner == OWNER::CLIENT)
-                INSERT_INCOMMING(connection->client, msg);
-            else 
-                INSERT_INCOMMING(connection->server, msg);
+            if (connection->owner == OWNER::CLIENT) {
+                list_insert_right(connection->client->incoming_msg, 0, msg);
+                RELEASE_INCOMING(connection->client);
+            }
+            else {
+                list_insert_right(connection->server->incoming_msg, 0, msg);
+                RELEASE_INCOMING(connection->server);
+            }
 
             nread -= (read_size + sizeof(MSG_TYPE));
         }
@@ -68,10 +72,14 @@ void on_read(uv_stream_t* client_endpoint, ssize_t nread, const uv_buf_t* buf) {
         msg->error_stat = ERR_STAT::CONNECTION_LOST;
         msg->client_endpoint = client_endpoint;
     
-        if (connection->owner == OWNER::CLIENT)
-            INSERT_OUTGOING(connection->client, msg);
-        else 
-            INSERT_OUTGOING(connection->server, msg);
+        if (connection->owner == OWNER::CLIENT) {
+            list_insert_right(connection->client->outgoing_msg, 0, msg);
+            RELEASE_OUTGOING(connection->client);
+        }
+        else {
+            list_insert_right(connection->server->outgoing_msg, 0, msg);
+            RELEASE_OUTGOING(connection->client);
+        } 
     }
 
     //nread == 0 ---> do nothing
@@ -312,7 +320,10 @@ void run_sender(server_t* server) {
         chat_message_t* msg = NULL;
 
         TRY_READ_OUTGOING(server); //block until recieve something
-        POP_OUTGOING(server, msg);
+        
+        //thread safe
+        list_delete_left(server->outgoing_msg, 0, msg);
+
         
         ERR_STAT send_stat = ERR_STAT::SUCCESS;
         if (msg)
@@ -321,7 +332,8 @@ void run_sender(server_t* server) {
         if (send_stat != ERR_STAT::SUCCESS) {
             chat_message_t* err_msg = create_chat_message(MSG_TYPE::ERROR_MSG);
             err_msg->error_stat = send_stat;
-            INSERT_INCOMMING(server, err_msg);
+            
+            list_insert_right(server->incoming_msg, 0, err_msg);
         }
     }
 } 
@@ -331,7 +343,9 @@ void run_sender(client_t* client) {
         chat_message_t* msg = NULL;
 
         TRY_READ_OUTGOING(client); //block until recieve something
-        POP_OUTGOING(client, msg);
+        
+        //thread safe
+        list_delete_left(client->outgoing_msg, 0, msg);
         
         ERR_STAT send_stat = ERR_STAT::SUCCESS;
         if (msg)
@@ -341,7 +355,8 @@ void run_sender(client_t* client) {
             chat_message_t* err_msg = create_chat_message(MSG_TYPE::ERROR_MSG);
             err_msg->error_stat = send_stat;
 
-            INSERT_INCOMMING(client, err_msg);
+            list_insert_right(client->incoming_msg, 0, err_msg);
+            RELEASE_INCOMING(client);
         }
     }
 

@@ -58,9 +58,10 @@ void destroy_graph_dump_file ()
 
 //------------------------------------------------------LOGING ERRORS----------------------------------------------------------//
 
-void print_err (list_* list, LIST_ERR_CODE ErrCode, const int line, const char* func)
+void print_err (list_* list, LIST_ERR_CODE ErrCode, const int line, const char* func, THREAD_MODE mode)
 {
     assert (log_file != NULL && "Please init log file");
+    THREAD_LOCK(list, mode);
 
     switch (ErrCode)
     {
@@ -103,12 +104,15 @@ void print_err (list_* list, LIST_ERR_CODE ErrCode, const int line, const char* 
         default:
         {
             fprintf (log_file, "Unexpected error code is %d\n", ErrCode);
+            THREAD_UNLOCK(list, mode);
             assert (0 && "!!Unexpected error code in ErrPrint function!!\n");
         }
     }
 
     if (ErrCode != LIST_ERR_CODE::SUCCESS)
         fprintf (log_file, "error happend in function [%s()] and on the line [%d]\n", func, line);
+
+    THREAD_UNLOCK(list, mode);
 
 }
 
@@ -123,22 +127,30 @@ LIST_ERR_CODE engaged_list_valid (list_* list);
 LIST_ERR_CODE free_list_valid (list_* list);
 
 
-LIST_ERR_CODE list_valid (list_* list)
-{
+LIST_ERR_CODE list_valid (list_* list, THREAD_MODE mode) {
+    THREAD_LOCK(list, mode);
+
     LIST_ERR_CODE ErrCode = LIST_ERR_CODE::SUCCESS;
 
     ErrCode = list_fields_valid  (list);
-    if (ErrCode != LIST_ERR_CODE::SUCCESS)
+    if (ErrCode != LIST_ERR_CODE::SUCCESS) {
+        THREAD_UNLOCK(list, mode);
         return ErrCode;
+    }
 
     ErrCode = engaged_list_valid (list);
-    if (ErrCode != LIST_ERR_CODE::SUCCESS) 
-      return ErrCode;
+    if (ErrCode != LIST_ERR_CODE::SUCCESS)  {
+        THREAD_UNLOCK(list, mode);
+        return ErrCode;
+    }
 
     ErrCode = free_list_valid    (list);
-    if (ErrCode != LIST_ERR_CODE::SUCCESS) 
+    if (ErrCode != LIST_ERR_CODE::SUCCESS) {
+        THREAD_UNLOCK(list, mode);
         return ErrCode;
+    }
 
+    THREAD_UNLOCK(list, mode);
 
     return ErrCode;
 }
@@ -245,15 +257,15 @@ LIST_ERR_CODE free_list_valid (list_* list)
 
 //-----------------------------------------------------DUMP FUNCTIONS------------------------------------------------------------//
 
-LIST_ERR_CODE print_list (list_* list, int list_type, print_value_t print_val);  //definition below
+LIST_ERR_CODE print_list (list_* list, int list_type, print_value_t print_val, THREAD_MODE mode);  //definition below
 //void print_value_int (list_elem* elem);                                         //   ||
 void print_value_chat_message(list_elem* elem);                                   //   ||
                                                                                   //   \/
 
 
-LIST_ERR_CODE list_text_dump (list_* list)
-{
-    LIST_VALIDATE (list);
+LIST_ERR_CODE list_text_dump (list_* list) {
+    THREAD_LOCK  (list, list->mode);
+    LIST_VALIDATE(list, THREAD_MODE::THREAD_UNSAFE);
 
     assert (dump_file != NULL && "Please init Dump file");
 
@@ -264,16 +276,17 @@ LIST_ERR_CODE list_text_dump (list_* list)
     fprintf   (dump_file, "Now in the list [%lu/%lu] elems are engaged\n" , list->size, list->capacity);
 
     fprintf   (dump_file, "listing of engaged elems:\n");
-    print_list (list, NODE_STATUS::ENGAGED, print_value_chat_message);
+    print_list (list, NODE_STATUS::ENGAGED, print_value_chat_message, THREAD_MODE::THREAD_UNSAFE);
 
     fprintf   (dump_file, "Now in the list [%lu] elems are free\n", list->capacity - list->size);
 
     fprintf   (dump_file, "Listing of free elems:\n");
-    print_list (list, NODE_STATUS::FREE, print_value_chat_message);
+    print_list (list, NODE_STATUS::FREE, print_value_chat_message, THREAD_MODE::THREAD_UNSAFE);
 
     fprintf   (dump_file, "\n\n-------------------------LIST DUMP FINISHED-----------------------\n\n");
 
-    LIST_VALIDATE (list);
+    LIST_VALIDATE (list, THREAD_MODE::THREAD_UNSAFE);
+    THREAD_UNLOCK(list, list->mode);
 
     return LIST_ERR_CODE::SUCCESS;    
 }
@@ -284,7 +297,8 @@ int get_elem_id (list_* list, int index, NODE_STATUS stat);
 
 LIST_ERR_CODE list_graph_dump (list_* list)
 {
-    LIST_VALIDATE (list);
+    THREAD_LOCK  (list, list->mode);
+    LIST_VALIDATE(list, THREAD_MODE::THREAD_UNSAFE);
 
     assert (graph_file != NULL && "Please init GraphDump file");
 
@@ -365,7 +379,8 @@ LIST_ERR_CODE list_graph_dump (list_* list)
     fprintf (graph_file, "}\n");
 
 
-    LIST_VALIDATE (list);
+    LIST_VALIDATE(list, THREAD_MODE::THREAD_UNSAFE);
+    THREAD_UNLOCK(list, list->mode);
 
     return LIST_ERR_CODE::SUCCESS;
 }
@@ -376,9 +391,10 @@ LIST_ERR_CODE list_graph_dump (list_* list)
 //------------------------------------------------------PRINT LIST FUNCTIONS---------------------------------------------//
 
 
-LIST_ERR_CODE print_list (list_* list, NODE_STATUS node_type, print_value_t print_val)
+LIST_ERR_CODE print_list (list_* list, NODE_STATUS node_type, print_value_t print_val, THREAD_MODE mode)
 {
-    LIST_VALIDATE (list);
+    THREAD_LOCK(list, mode);
+    LIST_VALIDATE (list, THREAD_MODE::THREAD_UNSAFE);
 
     if (node_type == NODE_STATUS::ENGAGED)
     {
@@ -421,7 +437,8 @@ LIST_ERR_CODE print_list (list_* list, NODE_STATUS node_type, print_value_t prin
         }
     }
 
-    LIST_VALIDATE (list);
+    LIST_VALIDATE(list, THREAD_MODE::THREAD_UNSAFE);
+    THREAD_UNLOCK(list, mode);
 
     return LIST_ERR_CODE::SUCCESS;
 }
@@ -452,7 +469,7 @@ void print_value_chat_message(list_elem* elem) {
 // function return elem's logical order number, by giving array index
 int get_elem_id (list_* list, int index, NODE_STATUS stat)
 {
-    LIST_VALIDATE (list);
+    LIST_VALIDATE (list, THREAD_MODE::THREAD_UNSAFE);
 
     list_elem* head = NULL;
 

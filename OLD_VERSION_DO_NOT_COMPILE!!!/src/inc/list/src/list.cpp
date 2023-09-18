@@ -11,12 +11,13 @@
 #define CHECK_DOWN( lst_ptr ) lst_ptr->size < (lst_ptr->capacity) / 4 && \
 lst_ptr->capacity / 2 >= lst_ptr->min_capacity
 
+
 int        insert_free_list (list_* list, list_elem* elem);
 list_elem* take_free_list   (list_* list);
 
 //------------------------------------------------------INIT/DESTROY---------------------------------------------------//
 
-list_* list_create (size_t elem_num, void (*init_destructor)(list_data_t*) = NULL)
+list_* list_create (size_t elem_num,  THREAD_MODE mode, void (*init_destructor)(list_data_t*) = NULL)
 {   
     list_* list     = CALLOC(1, list_);
     assert(list != NULL);
@@ -28,6 +29,11 @@ list_* list_create (size_t elem_num, void (*init_destructor)(list_data_t*) = NUL
     list->capacity  = elem_num;
     list->min_capacity = elem_num;
     list->size     = 0;
+    
+    //init mutex to thread safe insert/delete
+    list->mode = mode;
+    if (list->mode == THREAD_MODE::THREAD_SAFE)
+        pthread_mutex_init(&list->lock, NULL);
 
     list->buffer[0].status = NODE_STATUS::MASTER;
     list->buffer[0].next = list->buffer;
@@ -43,18 +49,20 @@ list_* list_create (size_t elem_num, void (*init_destructor)(list_data_t*) = NUL
     //destructor for list elems
     list->destructor = init_destructor;
 
-    LIST_VALIDATE (list);
+    LIST_VALIDATE (list, THREAD_MODE::THREAD_UNSAFE);
 
     return list;
 }
 
-LIST_ERR_CODE list_destroy (list_* list)
-{
-    LIST_VALIDATE (list);
+LIST_ERR_CODE list_destroy (list_* list) {
+    LIST_VALIDATE (list, THREAD_MODE::THREAD_UNSAFE);
 
     list->capacity  = 0;
     list->size      = 0;
     list->free_head = NULL;
+
+    if (list->mode == THREAD_MODE::THREAD_SAFE)
+        pthread_mutex_destroy(&list->lock);
 
     if (list->destructor)
         for (int i = 0; i < list->size; i ++)
@@ -68,14 +76,18 @@ LIST_ERR_CODE list_destroy (list_* list)
 
 //---------------------------------------------------------------------------------------------------------------------//
 
-list_elem* get_elem (list_* list, size_t id) //Gives elem by his order number
+list_elem* get_elem (list_* list, size_t id, THREAD_MODE mode) //Gives elem by his order number
 {
+    THREAD_LOCK(list, mode);
+
     list_elem* to_get = list->buffer;
 
     for (size_t i = 0; i < id; i ++)
     {
         to_get = to_get->next;
     }
+
+    THREAD_UNLOCK(list, mode);
 
     return to_get;
 }
@@ -89,11 +101,11 @@ int insert_left (list_elem* dest, list_elem* elem);
 int delete_left (list_elem* dest);
 
 
-LIST_ERR_CODE list_insert_right (list_* list, size_t id, list_data_t* data)
-{
-    LIST_VALIDATE (list);
+LIST_ERR_CODE list_insert_right (list_* list, size_t id, list_data_t* data) {
+    THREAD_LOCK  (list, list->mode);
+    LIST_VALIDATE(list, THREAD_MODE::THREAD_UNSAFE);
 
-    list_resize (list);
+    list_resize (list, THREAD_MODE::THREAD_UNSAFE);
 
     list_elem* new_to_add = take_free_list (list);
     new_to_add->status = NODE_STATUS::ENGAGED;
@@ -101,20 +113,21 @@ LIST_ERR_CODE list_insert_right (list_* list, size_t id, list_data_t* data)
 
     new_to_add->data = data;
 
-    list_elem* dest = get_elem (list, id);
+    list_elem* dest = get_elem (list, id, THREAD_MODE::THREAD_UNSAFE);
     insert_right (dest, new_to_add);
 
-    LIST_VALIDATE (list);
+    LIST_VALIDATE(list, THREAD_MODE::THREAD_UNSAFE);
+    THREAD_UNLOCK(list, list->mode);
 
     return LIST_ERR_CODE::SUCCESS;
 }
 
 
-LIST_ERR_CODE list_insert_left (list_* list, size_t id, list_data_t* data)
-{
-    LIST_VALIDATE (list);
+LIST_ERR_CODE list_insert_left (list_* list, size_t id, list_data_t* data) {
+    THREAD_LOCK(list, list->mode);
+    LIST_VALIDATE(list, THREAD_MODE::THREAD_UNSAFE);
 
-    list_resize (list);
+    list_resize (list, THREAD_MODE::THREAD_UNSAFE);
 
     list_elem* new_to_add = take_free_list (list);
     new_to_add->status = NODE_STATUS::ENGAGED;
@@ -122,38 +135,96 @@ LIST_ERR_CODE list_insert_left (list_* list, size_t id, list_data_t* data)
 
     new_to_add->data = data;
 
-    list_elem* dest = get_elem (list, id);
+    list_elem* dest = get_elem (list, id, THREAD_MODE::THREAD_UNSAFE);
     insert_left (dest, new_to_add);
 
-    LIST_VALIDATE (list);
+    LIST_VALIDATE (list, THREAD_MODE::THREAD_UNSAFE);
+    THREAD_UNLOCK(list, list->mode);
 
     return LIST_ERR_CODE::SUCCESS;
 }
 
-LIST_ERR_CODE list_delete (list_* list, size_t id)
+LIST_ERR_CODE list_delete (list_* list, size_t id, list_data_t* data)
 {
-    LIST_VALIDATE (list);
+    THREAD_LOCK(list, list->mode);
+    LIST_VALIDATE (list, THREAD_MODE::THREAD_UNSAFE);
 
     if (list->capacity == 0)
         return LIST_ERR_CODE::LIST_UNDERFLOW;
     
-    list_elem* del_elem = get_elem (list, id); 
+    list_elem* del_elem = get_elem (list, id, THREAD_MODE::THREAD_UNSAFE); 
 
     if (del_elem == list->buffer)
         return LIST_ERR_CODE::HEAD_DELEATE;
+
+    memcpy((void*)data, (const void*)del_elem->data, sizeof(list_data_t));
 
     delete_right (del_elem->prev);
     list->size --;
 
     insert_free_list (list, del_elem);
-    list_resize(list);
+    list_resize(list, THREAD_MODE::THREAD_UNSAFE);
 
-    LIST_VALIDATE (list);
+    LIST_VALIDATE (list, THREAD_MODE::THREAD_UNSAFE);
+    THREAD_UNLOCK(list, list->mode);
 
     return LIST_ERR_CODE::SUCCESS;
 }
 
 
+LIST_ERR_CODE list_delete_right(list_* list, size_t id, list_data_t* data) {
+    THREAD_LOCK(list, list->mode);
+    LIST_VALIDATE (list, THREAD_MODE::THREAD_UNSAFE);
+
+    if (list->capacity == 0)
+        return LIST_ERR_CODE::LIST_UNDERFLOW;
+    
+    list_elem* del_elem = get_elem (list, id, THREAD_MODE::THREAD_UNSAFE);
+
+    if (del_elem == list->buffer)
+        return LIST_ERR_CODE::HEAD_DELEATE; 
+
+    memcpy((void*)data, (const void*)del_elem->data, sizeof(list_data_t));
+
+    delete_right (del_elem->prev);
+    list->size --;
+
+    insert_free_list (list, del_elem);
+    list_resize(list, THREAD_MODE::THREAD_UNSAFE);
+
+    LIST_VALIDATE(list, THREAD_MODE::THREAD_UNSAFE);
+    THREAD_UNLOCK(list, list->mode);
+
+    return LIST_ERR_CODE::SUCCESS;
+
+}
+
+LIST_ERR_CODE list_delete_left(list_* list, size_t id, list_data_t* data) {
+    THREAD_LOCK(list, list->mode);
+    LIST_VALIDATE (list, THREAD_MODE::THREAD_UNSAFE);
+
+    if (list->capacity == 0)
+        return LIST_ERR_CODE::LIST_UNDERFLOW;
+    
+    list_elem* del_elem = get_elem(list, id, THREAD_MODE::THREAD_UNSAFE);
+
+    if (del_elem == list->buffer)
+        return LIST_ERR_CODE::HEAD_DELEATE; 
+
+    memcpy((void*)data, (const void*)del_elem->data, sizeof(list_data_t));
+
+    delete_right (del_elem->prev);
+    list->size --;
+
+    insert_free_list (list, del_elem);
+    list_resize(list, THREAD_MODE::THREAD_UNSAFE);
+
+    LIST_VALIDATE(list, THREAD_MODE::THREAD_UNSAFE);
+    THREAD_UNLOCK(list, list->mode);
+
+    return LIST_ERR_CODE::SUCCESS;
+
+}
 
 int insert_right (list_elem* dest, list_elem* elem)
 {
@@ -219,8 +290,7 @@ list_elem* take_free_list (list_* list)
 
         return head;
     }
-    else 
-    {
+    else {
         list_elem* pop_elem = NEXT(head);
         delete_right (head);
 
@@ -263,14 +333,14 @@ int delete_index (list_* list, int indx);
 list_elem* take_free_list_index (list_* list, int indx);
 
 
-LIST_ERR_CODE list_insert_index (list_* list, size_t index, list_data_t* data)
-{
-    LIST_VALIDATE (list);
+LIST_ERR_CODE list_insert_index (list_* list, size_t index, list_data_t* data) {
+    THREAD_LOCK(list, list->mode);
+    LIST_VALIDATE(list, THREAD_MODE::THREAD_UNSAFE);
 
     if (index > list->capacity)
         return LIST_ERR_CODE::WRONG_INDX;
 
-    list_resize (list);
+    list_resize (list, THREAD_MODE::THREAD_UNSAFE);
 
     list_elem* new_to_add = take_free_list_index (list, index);
     new_to_add->status = NODE_STATUS::ENGAGED;
@@ -280,14 +350,15 @@ LIST_ERR_CODE list_insert_index (list_* list, size_t index, list_data_t* data)
 
     insert_left (list->buffer, new_to_add);
 
-    LIST_VALIDATE (list);
+    LIST_VALIDATE(list, THREAD_MODE::THREAD_UNSAFE);
+    THREAD_UNLOCK(list, list->mode);
 
     return LIST_ERR_CODE::SUCCESS;
 }
 
-LIST_ERR_CODE list_delete_index (list_* list, size_t index)
-{
-    LIST_VALIDATE (list);
+LIST_ERR_CODE list_delete_index (list_* list, size_t index, list_data_t* data) {
+    THREAD_LOCK(list, list->mode);
+    LIST_VALIDATE (list, THREAD_MODE::THREAD_UNSAFE);
     
     if (index > list->capacity ||
         list->buffer[index].status == NODE_STATUS::FREE)
@@ -299,71 +370,19 @@ LIST_ERR_CODE list_delete_index (list_* list, size_t index)
     if (index == 0)
         return LIST_ERR_CODE::HEAD_DELEATE;
     
-    list_elem* del_elem = list->buffer + index; 
+    list_elem* del_elem = list->buffer + index;
+    memcpy((void*)data, (const void*)del_elem->data, sizeof(list_data_t));
 
     delete_right (del_elem->prev);
     list->size --;
 
     insert_free_list (list, del_elem);
-    list_resize(list);
+    list_resize(list, THREAD_MODE::THREAD_UNSAFE);
 
-    LIST_VALIDATE (list);
-
-    return LIST_ERR_CODE::SUCCESS;
-}
-
-LIST_ERR_CODE list_delete_right(list_* list, size_t index) {
-    LIST_VALIDATE (list);
-    
-    if (index > list->capacity ||
-        list->buffer[index].status == NODE_STATUS::FREE)
-        return LIST_ERR_CODE::WRONG_INDX;
-
-    if (list->capacity == 0)
-        return LIST_ERR_CODE::LIST_UNDERFLOW;
-    
-    list_elem* del_elem = NEXT(list->buffer + index);
-
-    if (del_elem == list->buffer)
-        return LIST_ERR_CODE::HEAD_DELEATE; 
-
-    delete_right (del_elem->prev);
-    list->size --;
-
-    insert_free_list (list, del_elem);
-    list_resize(list);
-
-    LIST_VALIDATE (list);
+    LIST_VALIDATE(list, THREAD_MODE::THREAD_UNSAFE);
+    THREAD_UNLOCK(list, list->mode);
 
     return LIST_ERR_CODE::SUCCESS;
-
-}
-
-LIST_ERR_CODE list_delete_left(list_* list, size_t index) {
-    LIST_VALIDATE (list);
-    
-    if (index > list->capacity ||
-        list->buffer[index].status == NODE_STATUS::FREE)
-        return LIST_ERR_CODE::WRONG_INDX;
-
-    if (list->capacity == 0)
-        return LIST_ERR_CODE::LIST_UNDERFLOW;
-    
-    list_elem* del_elem = PREV(list->buffer + index);
-
-    if (del_elem == list->buffer)
-        return LIST_ERR_CODE::HEAD_DELEATE; 
-
-    delete_right (del_elem->prev);
-    list->size --;
-
-    insert_free_list (list, del_elem);
-    list_resize(list);
-
-    LIST_VALIDATE (list);
-
-    return LIST_ERR_CODE::SUCCESS;
-
 }
 
 int delete_free_head (list_* list)
@@ -422,11 +441,11 @@ list_elem* take_free_list_index (list_* list, int indx)
 
 //---------------------------------------------LINIRIAZATION---------------------------------------//
 
-LIST_ERR_CODE make_list_great_again (list_* list)
-{
-    LIST_VALIDATE (list);
+LIST_ERR_CODE make_list_great_again (list_* list, THREAD_MODE mode) {
+    THREAD_LOCK  (list, mode);
+    LIST_VALIDATE(list, THREAD_MODE::THREAD_UNSAFE);
 
-    list_* new_list = list_create(list->capacity, list->destructor);
+    list_* new_list = list_create(list->capacity, THREAD_MODE::THREAD_UNSAFE, list->destructor);
 
     int indx = 1;
     list_elem* head = list->buffer;
@@ -452,7 +471,8 @@ LIST_ERR_CODE make_list_great_again (list_* list)
     FREE (old_buffer);
     FREE (new_list);
 
-    LIST_VALIDATE (list);
+    LIST_VALIDATE(list, THREAD_MODE::THREAD_UNSAFE);
+    THREAD_UNLOCK(list, mode);
 
     return LIST_ERR_CODE::SUCCESS;
 }
@@ -461,17 +481,13 @@ LIST_ERR_CODE make_list_great_again (list_* list)
 
 
 
-//---------------------------------------------------------------------------------------------------//
-
-
 
 //------------------------------------------RESIZE FUNCTIONS-----------------------------------------//
 
-LIST_ERR_CODE resize_up (list_* list)
-{
-    LIST_VALIDATE (list);
+LIST_ERR_CODE resize_up (list_* list) {
+    LIST_VALIDATE (list, THREAD_MODE::THREAD_UNSAFE);
 
-    list_* new_list = list_create(2*list->capacity, list->destructor);
+    list_* new_list = list_create(2*list->capacity, THREAD_MODE::THREAD_UNSAFE, list->destructor);
 
     for (size_t i = 1; i <= list->capacity; i++)
     {
@@ -493,16 +509,16 @@ LIST_ERR_CODE resize_up (list_* list)
     FREE (old_buffer);
     FREE (new_list);
 
-    LIST_VALIDATE (list);
+    LIST_VALIDATE (list, THREAD_MODE::THREAD_UNSAFE);
 
     return LIST_ERR_CODE::SUCCESS;
 }
 
 LIST_ERR_CODE resize_down (list_* list)
 {
-    LIST_VALIDATE (list);
+    LIST_VALIDATE (list, THREAD_MODE::THREAD_UNSAFE);
 
-    list_* new_list = list_create(list->capacity / 2, list->destructor);
+    list_* new_list = list_create(list->capacity / 2, THREAD_MODE::THREAD_UNSAFE, list->destructor);
 
     for (size_t i = 1; i <= list->size; i ++) 
     {
@@ -524,27 +540,29 @@ LIST_ERR_CODE resize_down (list_* list)
     FREE (old_buffer);
     FREE (new_list);
 
-    LIST_VALIDATE (list);
+    LIST_VALIDATE (list, THREAD_MODE::THREAD_UNSAFE);
 
     return LIST_ERR_CODE::SUCCESS;
 }
 
-LIST_ERR_CODE list_resize (list_* list)
-{
-    LIST_VALIDATE (list);
+
+LIST_ERR_CODE list_resize(list_* list, THREAD_MODE mode) {
+    THREAD_LOCK(list, mode);
+    LIST_VALIDATE (list, THREAD_MODE::THREAD_UNSAFE);
 
     if (CHECK_UP(list))
     {
-        make_list_great_again (list);
+        make_list_great_again (list, THREAD_MODE::THREAD_UNSAFE);
         resize_up (list);
     }
     else if (CHECK_DOWN(list))
     {
-        make_list_great_again (list);
+        make_list_great_again (list, THREAD_MODE::THREAD_UNSAFE);
         resize_down (list);
     }
 
-    LIST_VALIDATE (list);
+    LIST_VALIDATE(list, THREAD_MODE::THREAD_UNSAFE);
+    THREAD_UNLOCK(list, mode);
 
     return LIST_ERR_CODE::SUCCESS;
 }

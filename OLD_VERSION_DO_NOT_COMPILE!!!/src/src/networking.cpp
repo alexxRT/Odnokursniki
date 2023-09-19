@@ -8,6 +8,8 @@ static connect_t* connection = NULL;
 void create_connection(OWNER owner) {
     connection = CALLOC(1, connect_t);
     connection -> owner = owner;
+
+    return;
 }
 
 void destroy_connection() {
@@ -18,6 +20,45 @@ void destroy_connection() {
 
     FREE(connection);
 }
+
+//needs refactor and testing
+// void async_finish_networking(uv_async_s* async_args) {
+
+//     uv_stream_t* closing_endpoint = (uv_stream_t*)(async_args->data);
+
+//     if (uv_loop_alive(async_args->loop)) {
+//         uv_read_stop(closing_endpoint);
+//         uv_stop(async_args->loop);
+//         uv_loop_close(async_args->loop);
+//     }
+// }
+
+// void async_send_message(uv_async_s* async_args) {
+//     uv_buf_t buf_to_send = {};
+//     size_t   msg_size = 0;
+//     size_t   offset = 0;
+
+//     uv_stream_t* write_endpoint = (uv_stream_t*)(async_args->data);
+//     offset += sizeof(uv_stream_t*);
+
+//     memcpy(&msg_size, async_args->data + offset, sizeof(size_t));
+//     offset += sizeof(size_t);
+
+//     const char msg[msg_size] = "";
+//     memcpy(msg, async_args->data + offset, msg_size);
+
+//     buf_to_send.base = msg;
+//     buf_to_send.len  = msg_size;
+
+//     uv_write_t* write_req = CALLOC(1, uv_write_t);
+//     uv_write(write_req, write_endpoint, &buf_to_send, 1, on_write); 
+// }
+
+// void async_close_connection(uv_async_s* async_args) {
+//     uv_handle_t* close_handle = (uv_handle_t*)async_args->data;
+
+//     uv_close(close_handle, on_close_connection);
+// }
 
 //-------------------------------------------LIBUV NETWORKING---------------------------------------//
 
@@ -43,14 +84,14 @@ void on_close_connection(uv_handle_t* close_handle) {
     fprintf(stderr, "<<<<<<     Connection closed     >>>>>>\n");
 }
 
-void on_read(uv_stream_t* client_endpoint, ssize_t nread, const uv_buf_t* buf) {
+void on_read(uv_stream_t* endpoint, ssize_t nread, const uv_buf_t* buf) {
     if (nread > 0) {
         while (nread > 0) {
             MSG_TYPE   msg_type = get_msg_type(buf->base);
             chat_message_t* msg = create_chat_message(msg_type);
 
             int read_size = (msg->read_message)(msg, buf->base);
-            msg->client_endpoint = client_endpoint;
+            msg->client_endpoint = endpoint;
 
             if (connection->owner == OWNER::CLIENT) {
                 list_insert_right(connection->client->incoming_msg, 0, msg);
@@ -70,7 +111,7 @@ void on_read(uv_stream_t* client_endpoint, ssize_t nread, const uv_buf_t* buf) {
 
         chat_message_t* msg = create_chat_message(MSG_TYPE::ERROR_MSG);
         msg->error_stat = ERR_STAT::CONNECTION_LOST;
-        msg->client_endpoint = client_endpoint;
+        msg->client_endpoint = endpoint;
     
         if (connection->owner == OWNER::CLIENT) {
             list_insert_right(connection->client->outgoing_msg, 0, msg);
@@ -185,6 +226,10 @@ ERR_STAT run_networking(server_t* server, const char* ip, size_t port) {
 
     server->event_loop = event_loop;
 
+    // uv_async_init(event_loop, &connection->close_connection,  async_connection_close);
+    // uv_async_init(event_loop, &connection->finish_networking, async_finish_networking);
+    // uv_async_init(event_loop, &connection->send_message,      async_send_message);
+
     int run_stat = 0;//uv_run(event_loop, UV_RUN_DEFAULT);
     
     if (run_stat) {
@@ -217,6 +262,10 @@ ERR_STAT run_networking(client_t* client, const char* ip, size_t port) {
     }
 
     client->event_loop = event_loop;
+
+    // uv_async_init(event_loop, &connection->close_connection,  async_connection_close);
+    // uv_async_init(event_loop, &connection->finish_networking, async_finish_networking);
+    // uv_async_init(event_loop, &connection->send_message,      async_send_message);
 
     int run_stat = 0; //uv_run(event_loop, UV_RUN_DEFAULT);
 
@@ -276,7 +325,7 @@ ERR_STAT send_message(server_t* server, chat_message_t* msg) {
         int write_stat = uv_write(write_req, client->client_stream, (uv_buf_t*)buf, 1, on_write);
 
         if (write_stat) {
-            fprintf(stderr, "<<<<<<     Error while wrinting     >>>>>>\n");
+            fprintf(stderr, "<<<<<<     Error while writing     >>>>>>\n");
             fprintf(stderr, "%s\n\n",   uv_strerror(write_stat));
 
             //See error handling TO DO below:

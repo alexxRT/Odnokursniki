@@ -10,10 +10,16 @@
 //write forward declaration to avoid whole header include
 // 
 
+
+
 typedef struct connection_ {
     OWNER owner;
     client_t* client = NULL;
     server_t* server = NULL;
+
+    uv_async_t finish_networking;
+    uv_async_t send_message;
+    uv_async_t close_connection;
 }connect_t;
 
 //main libuv backend function

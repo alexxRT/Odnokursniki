@@ -1,11 +1,12 @@
 #include "networking.h"
 #include "chat_configs.h"
+#include "threads_safe.h"
 #include "memory.h"
 #include "messages.h"
 
 static connect_t* connection = NULL;
 
-void create_connection(OWNER owner) {
+void create_connection(OWNER owner, uv_loop_t* event_loop) {
     connection = CALLOC(1, connect_t);
     connection -> owner = owner;
 
@@ -13,52 +14,67 @@ void create_connection(OWNER owner) {
 }
 
 void destroy_connection() {
-    #ifdef DEBUG_VERSION
-        fprintf(stderr, "BE AWARE OF OWNER ADRESS DESTRUCTION\n");
-        fprintf(stderr, "FREE() OWNER STRUCT FIRST\n");
-    #endif
+    connection->client = NULL;
+    connection->server = NULL;
 
     FREE(connection);
 }
 
 //needs refactor and testing
-// void async_finish_networking(uv_async_s* async_args) {
 
-//     uv_stream_t* closing_endpoint = (uv_stream_t*)(async_args->data);
+// thread safe callback calls
+void async_stop(uv_async_s* async_args) {
+    if (uv_loop_alive(async_args->loop)) {
+        uv_stop(async_args->loop);
+        uv_loop_close(async_args->loop);
+    }
+}
 
-//     if (uv_loop_alive(async_args->loop)) {
-//         uv_read_stop(closing_endpoint);
-//         uv_stop(async_args->loop);
-//         uv_loop_close(async_args->loop);
-//     }
-// }
+void async_send(uv_async_s* async_args) {
+    uv_stream_t* write_endpoint = (uv_stream_t*)(async_args->data);
+    size_t offset = sizeof(uv_stream_t*);
 
-// void async_send_message(uv_async_s* async_args) {
-//     uv_buf_t buf_to_send = {};
-//     size_t   msg_size = 0;
-//     size_t   offset = 0;
+    //alloc memory to copy msg
+    uv_buf_t* buf_to_send = CALLOC(1, uv_buf_t);
+    buf_to_send.base      = CALLOC(MSG_SIZE, char);
+    buf_to_send.len  = MSG_SIZE;
 
-//     uv_stream_t* write_endpoint = (uv_stream_t*)(async_args->data);
-//     offset += sizeof(uv_stream_t*);
+    memcpy(buf_to_send.base, async_args->data + offset, MSG_SIZE);
+    //bzero for next writes, thats why copy was performed
+    bzero(async_args->data, offset + MSG_SIZE); 
 
-//     memcpy(&msg_size, async_args->data + offset, sizeof(size_t));
-//     offset += sizeof(size_t);
+    int write_stat = uv_write((uv_write_t*)async_args->next_closing, write_endpoint, buf_to_send, 1, on_write);
 
-//     const char msg[msg_size] = "";
-//     memcpy(msg, async_args->data + offset, msg_size);
+    if (write_stat) {
+        fprintf(stderr, "Error while writing\n");
+    }
+}
 
-//     buf_to_send.base = msg;
-//     buf_to_send.len  = msg_size;
+void async_close(uv_async_s* async_args) {
+    uv_close(async_args->next_closing, on_close_connection);
+}
 
-//     uv_write_t* write_req = CALLOC(1, uv_write_t);
-//     uv_write(write_req, write_endpoint, &buf_to_send, 1, on_write); 
-// }
+void call_async_write(uv_stream_t* write_dest, buffer_t* buf_to_write) {
+    uv_write_t* write_req = CALLOC(1, uv_write_t);
+    async_send_message.next_closing = (uv_handle_t*)write_req;
+    
+    memcpy(async_send_message.data, write_dest, sizeof(uv_write_t*));
+    size_t offset = sizeof(uv_write_t*);
 
-// void async_close_connection(uv_async_s* async_args) {
-//     uv_handle_t* close_handle = (uv_handle_t*)async_args->data;
+    memcpy(async_send_message.data + offset, buf_to_write + offset, MSG_SIZE);
 
-//     uv_close(close_handle, on_close_connection);
-// }
+    uv_async_send(&async_send_message);
+}
+
+void call_async_close(uv_handle_t* close_handle) {
+    async_close_connection.next_closing = close_handle;
+
+    uv_async_send(&async_close_connection);
+}
+
+void call_async_stop() {
+    uv_async_send(&async_stop_networking);
+}
 
 //-------------------------------------------LIBUV NETWORKING---------------------------------------//
 
@@ -132,7 +148,19 @@ void on_write(uv_write_t* write_handle, int status) {
         fprintf(stderr, "<<<<<<     Error while writing     >>>>>>\n");
         fprintf(stderr, "%s\n\n",   uv_strerror(status));
 
+        //releasing memory on bufs.base on write
+        for (size_t i = 0; i < write_handle->nbufs; i ++) {
+            FREE((write_handle->bufs + i)->base);
+            FREE(write_handle->bufs + i)
+        }
+
         uv_close((uv_handle_t*)write_handle->send_handle, on_close_connection);
+    }
+
+    //releasing memory on bufs.base on write
+    for (size_t i = 0; i < write_handle->nbufs; i ++) {
+        FREE((write_handle->bufs + i)->base);
+        FREE(write_handle->bufs + i)
     }
 
     FREE(write_handle);
@@ -226,9 +254,11 @@ ERR_STAT run_networking(server_t* server, const char* ip, size_t port) {
 
     server->event_loop = event_loop;
 
-    // uv_async_init(event_loop, &connection->close_connection,  async_connection_close);
-    // uv_async_init(event_loop, &connection->finish_networking, async_finish_networking);
-    // uv_async_init(event_loop, &connection->send_message,      async_send_message);
+    // this makes possible to rise callbacks from different threads 
+    // in thread safe manner
+    uv_async_init(event_loop, &async_close_connection, async_close);
+    uv_async_init(event_loop, &async_stop_networking,  async_stop);
+    uv_async_init(event_loop, &async_send_message,     async_send);
 
     int run_stat = 0;//uv_run(event_loop, UV_RUN_DEFAULT);
     
@@ -263,9 +293,11 @@ ERR_STAT run_networking(client_t* client, const char* ip, size_t port) {
 
     client->event_loop = event_loop;
 
-    // uv_async_init(event_loop, &connection->close_connection,  async_connection_close);
-    // uv_async_init(event_loop, &connection->finish_networking, async_finish_networking);
-    // uv_async_init(event_loop, &connection->send_message,      async_send_message);
+    // this makes possible to rise callbacks from different threads 
+    // in thread safe manner
+    uv_async_init(event_loop, &async_close_connection, async_close);
+    uv_async_init(event_loop, &async_stop_networking,  async_stop);
+    uv_async_init(event_loop, &async_send_message,     async_send);
 
     int run_stat = 0; //uv_run(event_loop, UV_RUN_DEFAULT);
 
@@ -309,124 +341,3 @@ void* start_networking(void* args) {
     pthread_exit(NULL);
     return NULL;
 }
-
-
-//------------------------------------------------------SENDER------------------------------------------//
-
-ERR_STAT send_message(server_t* server, chat_message_t* msg) {
-
-    base_client_t* client = get_client(server->client_base, msg->to);
-    if (client) {
-        buffer_t* buf = create_buffer(msg->msg_type);
-        msg->write_message(msg, buf->buf);
-
-        //on write request//
-        uv_write_t* write_req = CALLOC(1, uv_write_t);
-        int write_stat = uv_write(write_req, client->client_stream, (uv_buf_t*)buf, 1, on_write);
-
-        if (write_stat) {
-            fprintf(stderr, "<<<<<<     Error while writing     >>>>>>\n");
-            fprintf(stderr, "%s\n\n",   uv_strerror(write_stat));
-
-            //See error handling TO DO below:
-        }
-
-        destroy_type_buffer(buf);
-        return ERR_STAT::SUCCESS;
-    }
-
-
-    return ERR_STAT::UNKNOWN_CLIENT; 
-}
-
-
-ERR_STAT send_message(client_t* client, chat_message_t* msg) {
-    buffer_t* buf = create_buffer(msg->msg_type);
-    msg->write_message(msg, buf->buf);
-
-    //on write request//
-    uv_write_t* write_req = CALLOC(1, uv_write_t);
-    int write_stat = uv_write(write_req, client->server_dest, (uv_buf_t*)buf, 1, on_write);
-
-    destroy_type_buffer(buf);
-
-    if (write_stat) {
-        fprintf(stderr, "<<<<<<     Error while wrinting     >>>>>>\n");
-        fprintf(stderr, "%s\n\n",   uv_strerror(write_stat));
-
-        //for now only dump error occured
-        //TO DO: extend error handling
-
-        //return ERR_STAT::CONNECTION_LOST;
-    }
-
-    return ERR_STAT::SUCCESS;
-}
-
-
-void run_sender(server_t* server) {
-    while (ALIVE_STAT(server)) {
-        chat_message_t* msg = NULL;
-
-        TRY_READ_OUTGOING(server); //block until recieve something
-        
-        //thread safe
-        list_delete_left(server->outgoing_msg, 0, msg);
-
-        
-        ERR_STAT send_stat = ERR_STAT::SUCCESS;
-        if (msg)
-            send_stat = send_message(server, msg);
-
-        if (send_stat != ERR_STAT::SUCCESS) {
-            chat_message_t* err_msg = create_chat_message(MSG_TYPE::ERROR_MSG);
-            err_msg->error_stat = send_stat;
-            
-            list_insert_right(server->incoming_msg, 0, err_msg);
-        }
-    }
-} 
-
-void run_sender(client_t* client) {
-    while (ALIVE_STAT(client)) {
-        chat_message_t* msg = NULL;
-
-        TRY_READ_OUTGOING(client); //block until recieve something
-        
-        //thread safe
-        list_delete_left(client->outgoing_msg, 0, msg);
-        
-        ERR_STAT send_stat = ERR_STAT::SUCCESS;
-        if (msg)
-            send_stat = send_message(client, msg);
-
-        if (send_stat != ERR_STAT::SUCCESS) {
-            chat_message_t* err_msg = create_chat_message(MSG_TYPE::ERROR_MSG);
-            err_msg->error_stat = send_stat;
-
-            list_insert_right(client->incoming_msg, 0, err_msg);
-            RELEASE_INCOMING(client);
-        }
-    }
-
-}
-
-void* start_sender(void* args) {
-    thread_args* thr_args = (thread_args*)args;
-    
-    if (thr_args->owner == OWNER::SERVER) {
-        server_t* server = (server_t*)thr_args->owner_struct;
-        run_sender(server);
-    }
-    else { 
-        client_t* client = (client_t*)thr_args->owner_struct;
-        run_sender(client);
-    }
-
-    fprintf(stderr, "<<<<<<     Sender finalization     >>>>>>\n");
-
-    pthread_exit(NULL);
-    return NULL;
-}
-
-//--------------------------------------------------------------------------------------------------------//

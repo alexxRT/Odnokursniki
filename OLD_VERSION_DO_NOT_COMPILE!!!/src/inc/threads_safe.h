@@ -12,6 +12,7 @@
 #include <pthread.h>
 #include "list.h"
 #include "chat_configs.h"
+#include "networking.h"
 
 #define ALIVE_STAT(owner) static_cast<int>(owner->alive_stat)
 #define FATAL_ERROR_OCCURED() fprintf(stdin, "exit")
@@ -96,12 +97,8 @@ do {                                                           \
                                                                \
     RELEASE_OUTGOING(owner);                                           \
     RELEASE_INCOMING(owner);                                           \
-                                                               \
-  /*  if (uv_loop_alive(owner->event_loop)) {                   \
-                                                             \
-        uv_stop(owner->event_loop);                           \
-        uv_loop_close(owner->event_loop);                     \
-    }                      */                                    \
+                                                                   \
+    /*call_async_stop()                                                \*/
                                                                \
     return NULL;                                               \
 }while(0)

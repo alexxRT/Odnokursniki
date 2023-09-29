@@ -200,7 +200,7 @@ ERR_STAT operate_command(server_t* server, CMD_CODE code, chat_message_t* msg) {
                 send_all_status_changed(server, client);
 
                 //closing connection
-                uv_close((uv_handle_t*)client->client_stream, on_close_connection);
+                call_async_close((uv_handle_t*)client->client_stream);
 
                 fprintf(stderr, "Client [%s] log out\n\n", client->name);
                 return ERR_STAT::SUCCESS;
@@ -275,7 +275,7 @@ ERR_STAT operate_request(server_t* server, chat_message_t* msg) {
                     send_all_status_changed(server, client);
 
                     //closing connection
-                    uv_close((uv_handle_t*)client_endpoint, on_close_connection);
+                    call_async_close((uv_handle_t*)client_endpoint);
                 }
             }
             else 

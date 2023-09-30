@@ -32,7 +32,7 @@ void async_stop(uv_async_s* async_args) {
 
 void async_send(uv_async_s* async_args) {
     uv_write_t*  write_req = (uv_write_t*)async_args->next_closing;
-    uv_stream_t* write_endpoint = (uv_stream_t*)async_args->data;
+    uv_stream_t* write_endpoint = *(uv_stream_t**)async_args->data;
     size_t offset = sizeof(uv_stream_t*);
 
     // CALLOC here == memory leak

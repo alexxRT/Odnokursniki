@@ -31,22 +31,28 @@ void async_stop(uv_async_s* async_args) {
 }
 
 void async_send(uv_async_s* async_args) {
-    uv_stream_t* write_endpoint = (uv_stream_t*)(async_args->data);
+    uv_write_t*  write_req = (uv_write_t*)async_args->next_closing;
+    uv_stream_t* write_endpoint = (uv_stream_t*)async_args->data;
     size_t offset = sizeof(uv_stream_t*);
 
-    //alloc memory to copy msg
-    uv_buf_t* buf_to_send = CALLOC(1, uv_buf_t);
-    buf_to_send.base      = CALLOC(MSG_SIZE, char);
-    buf_to_send.len  = MSG_SIZE;
-
-    memcpy(buf_to_send.base, async_args->data + offset, MSG_SIZE);
-    //bzero for next writes, thats why copy was performed
+    // CALLOC here == memory leak
+    // libuv does need to have valid bufs until on_write() will be called
+    // write_req -> bufs || bufsml are internal stuff and are not for userspace usage
+    char msg_body[MSG_SIZE];
+    memcpy(msg_body, async_args->data + offset, MSG_SIZE);
     bzero(async_args->data, offset + MSG_SIZE); 
 
-    int write_stat = uv_write((uv_write_t*)async_args->next_closing, write_endpoint, buf_to_send, 1, on_write);
+    uv_buf_t bufs = {};
+    bufs.base = msg_body;
+    bufs.len = MSG_SIZE;
 
+    int write_stat = uv_write(write_req, write_endpoint, &bufs, 1, on_write);
+
+    // look up source code and operate cases when connection teared up
+    // if so, uv_close(write_endpoint, on_close_connection);
     if (write_stat) {
         fprintf(stderr, "Error while writing\n");
+        FREE (write_req)
     }
 }
 
@@ -148,20 +154,22 @@ void on_write(uv_write_t* write_handle, int status) {
         fprintf(stderr, "<<<<<<     Error while writing     >>>>>>\n");
         fprintf(stderr, "%s\n\n",   uv_strerror(status));
 
-        //releasing memory on bufs.base on write
-        for (size_t i = 0; i < write_handle->nbufs; i ++) {
-            FREE((write_handle->bufs + i)->base);
-            FREE(write_handle->bufs + i)
-        }
-
         uv_close((uv_handle_t*)write_handle->send_handle, on_close_connection);
     }
+    // from libuv src code
 
-    //releasing memory on bufs.base on write
-    for (size_t i = 0; i < write_handle->nbufs; i ++) {
-        FREE((write_handle->bufs + i)->base);
-        FREE(write_handle->bufs + i)
-    }
+    // if (req->error == 0) {
+    //     if (req->bufs != req->bufsml)
+    //         free(req->bufs);
+    //     req->bufs = NULL;
+    // }
+    // and fundomental one:
+
+    //  req->bufs = req->bufsml;
+    //  if (nbufs > ARRAY_SIZE(req->bufsml))
+    //     req->bufs = malloc(nbufs * sizeof(bufs[0]));
+
+    // So NO FREE() can be performed on bufs!!!
 
     FREE(write_handle);
 }

@@ -139,7 +139,7 @@ void send_all_status_changed(server_t* server, base_client_t* client) {
         if (client->status == STATUS::ONLINE) {
             chat_message_t* msg = create_chat_message(MSG_TYPE::SYSTEM);
             msg->to = client->name_hash;
-            msg->write_message(msg, buf->buf);
+            msg->read_message(msg, buf->buf);
 
             list_insert_right(server->outgoing_msg, 0, msg);
             RELEASE_OUTGOING(server);
@@ -163,7 +163,7 @@ void send_online_list(server_t* server, base_client_t* client) {
 
     chat_message_t* msg = create_chat_message(MSG_TYPE::SYSTEM);
     msg->to = client->name_hash;
-    msg->write_message(msg, buf->buf);
+    msg->read_message(msg, buf->buf);
 
     list_insert_right(server->outgoing_msg, 0, msg);
     RELEASE_OUTGOING(server);

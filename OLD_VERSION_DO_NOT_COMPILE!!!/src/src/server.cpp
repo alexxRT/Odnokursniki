@@ -283,6 +283,11 @@ ERR_STAT operate_request(server_t* server, chat_message_t* msg) {
         }
         break;
 
+        case MSG_TYPE::ON_CLOSE: {
+            fprintf (stderr, "Connection closed. Confirmed!\n");
+        }
+        break;
+
         default: {
             fprintf(stderr, "Unexpected msg_type: %d\n", msg_type);
             fprintf(stderr, "Request ignored...\n\n");
@@ -295,32 +300,89 @@ ERR_STAT operate_request(server_t* server, chat_message_t* msg) {
     return ERR_STAT::SUCCESS;
 }
 
+int close_all_active_connections(server_t* server) {
+    //poping all messages out of incomming
+    chat_message_t* msg = NULL;
+
+    while (server->incoming_msg->size > 0) {
+        list_delete_left(server->incoming_msg, 0, &msg);
+        assert(msg != NULL && "Message null on list delete!");
+
+        destroy_chat_message(msg);
+    }
+
+    //closing all connections on interface finalization 
+    size_t closing_req = 0;
+    for (int i = 0; i < server->client_base->size; i ++) {
+        base_client_t* client_b = server->client_base->base + i;
+
+        if (client_b->status == STATUS::ONLINE) {
+            call_async_close((uv_handle_t*)client_b->client_stream);
+            closing_req += 1;
+
+            // does not change anything, but to underlie connection closing
+            client_b->status = STATUS::OFFLINE;
+        }
+    }
+    size_t closing_confirms = 0;
+
+    //recieve connection close confirmation
+    //check if request amount == closed confirms
+    //otherwise interface won't finalize
+    while (closing_confirms != closing_req) {
+        TRY_READ_INCOMING(server);
+
+        chat_message_t* msg = NULL;
+        list_delete_left(server->incoming_msg, 0, &msg);
+        assert (msg != NULL && "Message null from list delete");
+
+        if (msg->msg_type == MSG_TYPE::ON_CLOSE)
+            closing_confirms ++;
+
+        destroy_chat_message(msg);
+
+        fprintf(stderr, "\rConnection close [%lu/%lu]", closing_confirms, closing_req);
+        fflush(stdout);
+
+        sleep(1); //just for now (beautiful output)
+    }
+
+    fprintf(stderr, "\n");
+
+    return 0;
+}
+
 void* start_interface(void* args) {
     thread_args* thr_args = (thread_args*)args;
     server_t* server = (server_t*)(thr_args->owner_struct);
 
     while (ALIVE_STAT(server)) {
-        chat_message_t* msg = NULL;
-
         //block until smth will apear to read ---> avoid useless "while" looping
         TRY_READ_INCOMING(server);
 
         //thread_safe
-        list_delete_left(server->incoming_msg, 0, msg);
+        chat_message_t* msg = NULL;
+        list_delete_left(server->incoming_msg, 0, &msg);
+        assert(msg != NULL && "Message null on list delete!");
 
         ERR_STAT request_stat = ERR_STAT::SUCCESS;
-        if (msg)
+        if (msg) {
             request_stat = operate_request(server, msg);
+            destroy_chat_message(msg); //destroy message after request opperated
+        }
 
         if (request_stat != ERR_STAT::SUCCESS) {
             chat_message_t* err_msg = create_chat_message(MSG_TYPE::ERROR_MSG);
             err_msg->error_stat = request_stat;
             
-            list_insert_right(server->outgoing_msg, 0, msg);
+            list_insert_right(server->outgoing_msg, 0, err_msg);
             RELEASE_OUTGOING(server);
         }
     }
+    
+    close_all_active_connections(server);
 
+    fprintf(stderr, "All connections closed\n");
     fprintf(stderr, "<<<<<<     Interface finalization     >>>>>>\n");
 
     pthread_exit(NULL);
@@ -346,5 +408,4 @@ void run_server_backend(server_t* server, const char* ip_address, size_t port) {
 
     for (int i = THREAD_NUM - 1; i >= 0; i--)
         pthread_join(pid[i], NULL);
-
 }

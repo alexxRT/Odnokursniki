@@ -30,6 +30,8 @@ int write_text_msg     (chat_message_t* msg, char* buffer);
 int write_error_msg    (chat_message_t* msg, char* buffer);
 int write_broadcast_msg(chat_message_t* msg, char* buffer);
 
+const int RW_HANDLERS_NUM = 4;
+
 const read_handler_t read_handlers[] = {
     read_server_msg,
     read_text_msg,
@@ -138,11 +140,16 @@ int write_error_msg(chat_message_t* msg, char* buffer) {
 
 
 chat_message_t* create_chat_message (MSG_TYPE type) {
-    chat_message_t* msg = (chat_message_t*)calloc(1, sizeof(chat_message_t));
+    chat_message_t* msg = CALLOC(1, chat_message_t);
+    int handle_indx = static_cast<int>(type);
+    assert(handle_indx >= 0 && "Invalid msg type on creation");
 
     msg->msg_type = type;
-    msg->read_message = read_handlers[static_cast<int>(type)];
-    msg->write_message = write_handlers[static_cast<int>(type)];
+    if (handle_indx < RW_HANDLERS_NUM) {
+        msg->read_message  = read_handlers[static_cast<int>(type)];
+        msg->write_message = write_handlers[static_cast<int>(type)];
+    }
+    //othrewise emty "header-kind" message
 
     return msg;
 };

@@ -24,7 +24,6 @@ enum class ALIVE_STAT : size_t{
     DEAD = 0
 };
 
-
 typedef struct lock_ {
     sembuf* sem_array;
     size_t   semid;
@@ -38,7 +37,6 @@ typedef struct args__{
     size_t port;
 
 }thread_args;
-
 
 #define TRY_READ_INCOMING( owner )                                            \
 do{                                                                    \
@@ -98,10 +96,10 @@ do {                                                           \
     RELEASE_OUTGOING(owner);                                           \
     RELEASE_INCOMING(owner);                                           \
                                                                    \
-    /*call_async_stop()                                                \*/
+    call_async_stop();                                              \
                                                                \
     return NULL;                                               \
-}while(0)
+}while(0)   
 
 
 

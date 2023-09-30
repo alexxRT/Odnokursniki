@@ -23,7 +23,8 @@ enum class MSG_TYPE : int {
     SYSTEM    = 0,
     TXT_MSG   = 1,
     BROADCAST = 2,
-    ERROR_MSG = 3
+    ERROR_MSG = 3,
+    ON_CLOSE = 4
 };
 
 struct message_; //forward declaration to init fill message handler

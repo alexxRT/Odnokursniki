@@ -5,6 +5,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+
 enum class CMD_CODE : int {
     LOG_IN       = 0,
     LOG_OUT      = 1,

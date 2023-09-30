@@ -65,8 +65,10 @@ LIST_ERR_CODE list_destroy (list_* list) {
         pthread_mutex_destroy(&list->lock);
 
     if (list->destructor)
-        for (int i = 0; i < list->size; i ++)
-            list->destructor(list->buffer[i].data);
+        for (int i = 0; i < list->capacity; i ++) {
+            if (list->buffer[i].status == NODE_STATUS::ENGAGED)
+                list->destructor(list->buffer[i].data);
+        }
 
     FREE(list->buffer);
     FREE(list);
@@ -144,7 +146,7 @@ LIST_ERR_CODE list_insert_left (list_* list, size_t id, list_data_t* data) {
     return LIST_ERR_CODE::SUCCESS;
 }
 
-LIST_ERR_CODE list_delete (list_* list, size_t id, list_data_t* data)
+LIST_ERR_CODE list_delete (list_* list, size_t id, list_data_t** data)
 {
     THREAD_LOCK(list, list->mode);
     LIST_VALIDATE (list, THREAD_MODE::THREAD_UNSAFE);
@@ -157,7 +159,8 @@ LIST_ERR_CODE list_delete (list_* list, size_t id, list_data_t* data)
     if (del_elem == list->buffer)
         return LIST_ERR_CODE::HEAD_DELEATE;
 
-    memcpy((void*)data, (const void*)del_elem->data, sizeof(list_data_t));
+    *data = del_elem->data;
+    del_elem->data = NULL;
 
     delete_right (del_elem->prev);
     list->size --;
@@ -172,7 +175,7 @@ LIST_ERR_CODE list_delete (list_* list, size_t id, list_data_t* data)
 }
 
 
-LIST_ERR_CODE list_delete_right(list_* list, size_t id, list_data_t* data) {
+LIST_ERR_CODE list_delete_right(list_* list, size_t id, list_data_t** data) {
     THREAD_LOCK(list, list->mode);
     LIST_VALIDATE (list, THREAD_MODE::THREAD_UNSAFE);
 
@@ -184,7 +187,8 @@ LIST_ERR_CODE list_delete_right(list_* list, size_t id, list_data_t* data) {
     if (del_elem == list->buffer)
         return LIST_ERR_CODE::HEAD_DELEATE; 
 
-    memcpy((void*)data, (const void*)del_elem->data, sizeof(list_data_t));
+    *data = del_elem->data;
+    del_elem->data = NULL;
 
     delete_right (del_elem->prev);
     list->size --;
@@ -199,7 +203,7 @@ LIST_ERR_CODE list_delete_right(list_* list, size_t id, list_data_t* data) {
 
 }
 
-LIST_ERR_CODE list_delete_left(list_* list, size_t id, list_data_t* data) {
+LIST_ERR_CODE list_delete_left(list_* list, size_t id, list_data_t** data) {
     THREAD_LOCK(list, list->mode);
     LIST_VALIDATE (list, THREAD_MODE::THREAD_UNSAFE);
 
@@ -211,7 +215,8 @@ LIST_ERR_CODE list_delete_left(list_* list, size_t id, list_data_t* data) {
     if (del_elem == list->buffer)
         return LIST_ERR_CODE::HEAD_DELEATE; 
 
-    memcpy((void*)data, (const void*)del_elem->data, sizeof(list_data_t));
+    *data = del_elem->data;
+    del_elem->data = NULL;
 
     delete_right (del_elem->prev);
     list->size --;
@@ -356,7 +361,7 @@ LIST_ERR_CODE list_insert_index (list_* list, size_t index, list_data_t* data) {
     return LIST_ERR_CODE::SUCCESS;
 }
 
-LIST_ERR_CODE list_delete_index (list_* list, size_t index, list_data_t* data) {
+LIST_ERR_CODE list_delete_index (list_* list, size_t index, list_data_t** data) {
     THREAD_LOCK(list, list->mode);
     LIST_VALIDATE (list, THREAD_MODE::THREAD_UNSAFE);
     
@@ -371,7 +376,9 @@ LIST_ERR_CODE list_delete_index (list_* list, size_t index, list_data_t* data) {
         return LIST_ERR_CODE::HEAD_DELEATE;
     
     list_elem* del_elem = list->buffer + index;
-    memcpy((void*)data, (const void*)del_elem->data, sizeof(list_data_t));
+
+    *data = del_elem->data;
+    del_elem->data = NULL;
 
     delete_right (del_elem->prev);
     list->size --;

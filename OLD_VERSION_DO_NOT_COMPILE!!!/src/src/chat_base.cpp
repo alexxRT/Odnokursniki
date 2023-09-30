@@ -37,9 +37,7 @@ chat_base_t* create_client_base(size_t base_size) {
 }
 
 void destoy_client_base(chat_base_t* base) {
-    for (size_t i = 0; i < base->size; i ++)
-        if (base->base[i].status == STATUS::ONLINE)//only online users have unreleased stream handlers
-            FREE(base->base[i].client_stream);
+    //it should be managed by networking thread on close connection
 
     FREE(base->base);
     FREE(base);

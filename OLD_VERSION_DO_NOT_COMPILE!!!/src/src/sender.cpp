@@ -4,8 +4,6 @@
 #include "memory.h"
 #include "list.h"
 
-
-
 ERR_STAT send_message(server_t* server, chat_message_t* msg) {
     base_client_t* client = get_client(server->client_base, msg->to);
     if (client) {
@@ -40,11 +38,14 @@ void run_sender(server_t* server) {
         TRY_READ_OUTGOING(server); //block until recieve something
         
         //thread safe
-        list_delete_left(server->outgoing_msg, 0, msg);
+        list_delete_left(server->outgoing_msg, 0, &msg);
+        assert(msg != NULL && "Message null on list delete!");
 
         ERR_STAT send_stat = ERR_STAT::SUCCESS;
-        if (msg)
+        if (msg) {
             send_stat = send_message(server, msg);
+            destroy_chat_message(msg); //destroy message after sent
+        }
 
         if (send_stat != ERR_STAT::SUCCESS) {
             chat_message_t* err_msg = create_chat_message(MSG_TYPE::ERROR_MSG);
@@ -62,11 +63,14 @@ void run_sender(client_t* client) {
         TRY_READ_OUTGOING(client); //block until recieve something
         
         //thread safe
-        list_delete_left(client->outgoing_msg, 0, msg);
+        list_delete_left(client->outgoing_msg, 0, &msg);
+        assert(msg != NULL && "Message null on list delete!");
         
         ERR_STAT send_stat = ERR_STAT::SUCCESS;
-        if (msg)
+        if (msg) {
             send_stat = send_message(client, msg);
+            destroy_chat_message(msg); //destroy message after sent
+        }
 
         if (send_stat != ERR_STAT::SUCCESS) {
             chat_message_t* err_msg = create_chat_message(MSG_TYPE::ERROR_MSG);

@@ -81,12 +81,12 @@ LIST_ERR_CODE list_destroy  (list_* list);
 LIST_ERR_CODE list_insert_right (list_* list, size_t id, list_data_t* data);
 LIST_ERR_CODE list_insert_left  (list_* list, size_t id, list_data_t* data);
 
-LIST_ERR_CODE list_delete       (list_* list, size_t id, list_data_t* data);
-LIST_ERR_CODE list_delete_left  (list_* list, size_t id, list_data_t* data);
-LIST_ERR_CODE list_delete_right (list_* list, size_t id, list_data_t* data);
+LIST_ERR_CODE list_delete       (list_* list, size_t id, list_data_t** data);
+LIST_ERR_CODE list_delete_left  (list_* list, size_t id, list_data_t** data);
+LIST_ERR_CODE list_delete_right (list_* list, size_t id, list_data_t** data);
 
 LIST_ERR_CODE list_insert_index (list_* list, size_t index, list_data_t* data);
-LIST_ERR_CODE list_delete_index (list_* list, size_t index, list_data_t* data);
+LIST_ERR_CODE list_delete_index (list_* list, size_t index, list_data_t** data);
 
 LIST_ERR_CODE list_resize(list_* list, THREAD_MODE mode);
 

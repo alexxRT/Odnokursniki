@@ -1,12 +1,13 @@
 #include "networking.h"
+#include "client.h"
+#include "server.h"
 #include "chat_configs.h"
 #include "threads_safe.h"
 #include "memory.h"
-#include "messages.h"
 
 static connect_t* connection = NULL;
 
-void create_connection(OWNER owner, uv_loop_t* event_loop) {
+void create_connection(OWNER owner) {
     connection = CALLOC(1, connect_t);
     connection -> owner = owner;
 
@@ -39,7 +40,7 @@ void async_send(uv_async_s* async_args) {
     // libuv does need to have valid bufs until on_write() will be called
     // write_req -> bufs || bufsml are internal stuff and are not for userspace usage
     char msg_body[MSG_SIZE];
-    memcpy(msg_body, async_args->data + offset, MSG_SIZE);
+    memcpy(msg_body, (char*)async_args->data + offset, MSG_SIZE);
     bzero(async_args->data, offset + MSG_SIZE); 
 
     uv_buf_t bufs = {};
@@ -67,7 +68,7 @@ void call_async_write(uv_stream_t* write_dest, buffer_t* buf_to_write) {
     memcpy(async_send_message.data, write_dest, sizeof(uv_write_t*));
     size_t offset = sizeof(uv_write_t*);
 
-    memcpy(async_send_message.data + offset, buf_to_write + offset, MSG_SIZE);
+    memcpy((char*)async_send_message.data + offset, buf_to_write + offset, MSG_SIZE);
 
     uv_async_send(&async_send_message);
 }
@@ -103,7 +104,18 @@ void alloc_cb (uv_handle_t* alloc_handle, size_t suggested_size, uv_buf_t* buf) 
 void on_close_connection(uv_handle_t* close_handle) {
     uv_read_stop((uv_stream_t*)close_handle);
     FREE(close_handle);
+    
     fprintf(stderr, "<<<<<<     Connection closed     >>>>>>\n");
+
+    chat_message_t* close_confirm_msg = create_chat_message(MSG_TYPE::ON_CLOSE);
+    if (connection->owner == OWNER::SERVER) {
+        list_insert_right(connection->server->incoming_msg, 0, close_confirm_msg);
+        RELEASE_INCOMING(connection->server);
+    }
+    else {
+        list_insert_right(connection->client->incoming_msg, 0, close_confirm_msg);
+        RELEASE_INCOMING(connection->client);
+    }
 }
 
 void on_read(uv_stream_t* endpoint, ssize_t nread, const uv_buf_t* buf) {
@@ -268,9 +280,9 @@ ERR_STAT run_networking(server_t* server, const char* ip, size_t port) {
     uv_async_init(event_loop, &async_stop_networking,  async_stop);
     uv_async_init(event_loop, &async_send_message,     async_send);
 
-    int run_stat = 0;//uv_run(event_loop, UV_RUN_DEFAULT);
+    int run_stat = uv_run(event_loop, UV_RUN_DEFAULT);
     
-    if (run_stat) {
+    if (run_stat < 0) {
         fprintf(stderr, "<<<<<<     Error on event loop exit     >>>>>>\n");
         fprintf(stderr, "%s\n\n",   uv_strerror(run_stat));
 
@@ -307,9 +319,9 @@ ERR_STAT run_networking(client_t* client, const char* ip, size_t port) {
     uv_async_init(event_loop, &async_stop_networking,  async_stop);
     uv_async_init(event_loop, &async_send_message,     async_send);
 
-    int run_stat = 0; //uv_run(event_loop, UV_RUN_DEFAULT);
+    int run_stat = uv_run(event_loop, UV_RUN_DEFAULT);
 
-    if (run_stat) {
+    if (run_stat < 0) {
         fprintf(stderr, "<<<<<<     Error on event loop exit     >>>>>>\n");
         fprintf(stderr, "%s\n\n",   uv_strerror(run_stat));
 
@@ -344,6 +356,7 @@ void* start_networking(void* args) {
         pthread_exit(NULL);
         return NULL;
     }
+
 
     destroy_connection();
     pthread_exit(NULL);

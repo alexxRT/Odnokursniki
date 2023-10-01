@@ -3,6 +3,7 @@
 #include "messages.h"
 #include "memory.h"
 #include "list.h"
+#include "list_debug.h"
 
 ERR_STAT send_message(server_t* server, chat_message_t* msg) {
     base_client_t* client = get_client(server->client_base, msg->to);
@@ -38,8 +39,9 @@ void run_sender(server_t* server) {
         TRY_READ_OUTGOING(server); //block until recieve something
         
         //thread safe
-        list_delete_left(server->outgoing_msg, 0, &msg);
-        assert(msg != NULL && "Message null on list delete!");
+        LIST_ERR_CODE err_code = list_delete_left(server->outgoing_msg, 0, &msg);
+        if (err_code != LIST_ERR_CODE::SUCCESS)
+            print_err(server->outgoing_msg, err_code, __LINE__, __func__, THREAD_MODE::THREAD_UNSAFE);
 
         ERR_STAT send_stat = ERR_STAT::SUCCESS;
         if (msg) {
@@ -48,6 +50,7 @@ void run_sender(server_t* server) {
         }
 
         if (send_stat != ERR_STAT::SUCCESS) {
+            fprintf(stderr, "BAD REQUEST OCCURED\n");
             chat_message_t* err_msg = create_chat_message(MSG_TYPE::ERROR_MSG);
             err_msg->error_stat = send_stat;
             
@@ -63,8 +66,9 @@ void run_sender(client_t* client) {
         TRY_READ_OUTGOING(client); //block until recieve something
         
         //thread safe
-        list_delete_left(client->outgoing_msg, 0, &msg);
-        assert(msg != NULL && "Message null on list delete!");
+        LIST_ERR_CODE err_code = list_delete_left(client->outgoing_msg, 0, &msg);
+        if (err_code != LIST_ERR_CODE::SUCCESS)
+            print_err(client->outgoing_msg, err_code, __LINE__, __func__, THREAD_MODE::THREAD_UNSAFE);
         
         ERR_STAT send_stat = ERR_STAT::SUCCESS;
         if (msg) {

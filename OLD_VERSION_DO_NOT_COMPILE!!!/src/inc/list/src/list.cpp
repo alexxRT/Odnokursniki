@@ -146,12 +146,11 @@ LIST_ERR_CODE list_insert_left (list_* list, size_t id, list_data_t* data) {
     return LIST_ERR_CODE::SUCCESS;
 }
 
-LIST_ERR_CODE list_delete (list_* list, size_t id, list_data_t** data)
-{
+LIST_ERR_CODE list_delete (list_* list, size_t id, list_data_t** data) {
     THREAD_LOCK(list, list->mode);
     LIST_VALIDATE (list, THREAD_MODE::THREAD_UNSAFE);
 
-    if (list->capacity == 0)
+    if (list->size == 0)
         return LIST_ERR_CODE::LIST_UNDERFLOW;
     
     list_elem* del_elem = get_elem (list, id, THREAD_MODE::THREAD_UNSAFE); 
@@ -179,10 +178,11 @@ LIST_ERR_CODE list_delete_right(list_* list, size_t id, list_data_t** data) {
     THREAD_LOCK(list, list->mode);
     LIST_VALIDATE (list, THREAD_MODE::THREAD_UNSAFE);
 
-    if (list->capacity == 0)
+    if (list->size == 0)
         return LIST_ERR_CODE::LIST_UNDERFLOW;
     
     list_elem* del_elem = get_elem (list, id, THREAD_MODE::THREAD_UNSAFE);
+    del_elem = NEXT(del_elem);
 
     if (del_elem == list->buffer)
         return LIST_ERR_CODE::HEAD_DELEATE; 
@@ -190,7 +190,7 @@ LIST_ERR_CODE list_delete_right(list_* list, size_t id, list_data_t** data) {
     *data = del_elem->data;
     del_elem->data = NULL;
 
-    delete_right (del_elem->prev);
+    delete_right(del_elem->prev);
     list->size --;
 
     insert_free_list (list, del_elem);
@@ -207,10 +207,11 @@ LIST_ERR_CODE list_delete_left(list_* list, size_t id, list_data_t** data) {
     THREAD_LOCK(list, list->mode);
     LIST_VALIDATE (list, THREAD_MODE::THREAD_UNSAFE);
 
-    if (list->capacity == 0)
+    if (list->size == 0)
         return LIST_ERR_CODE::LIST_UNDERFLOW;
     
     list_elem* del_elem = get_elem(list, id, THREAD_MODE::THREAD_UNSAFE);
+    del_elem = PREV(del_elem);
 
     if (del_elem == list->buffer)
         return LIST_ERR_CODE::HEAD_DELEATE; 
@@ -218,7 +219,7 @@ LIST_ERR_CODE list_delete_left(list_* list, size_t id, list_data_t** data) {
     *data = del_elem->data;
     del_elem->data = NULL;
 
-    delete_right (del_elem->prev);
+    delete_right(del_elem->prev);
     list->size --;
 
     insert_free_list (list, del_elem);

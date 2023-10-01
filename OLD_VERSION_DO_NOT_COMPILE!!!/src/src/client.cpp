@@ -4,6 +4,7 @@
 #include "client.h"
 #include "memory.h"
 #include "networking.h"
+#include "list_debug.h"
 
 //SEND MESSAGE
 //1) creat char buffer for body
@@ -110,6 +111,8 @@ void run_client_backend(client_t* client, size_t port, const char* ip) {
     args.port = port; 
 
     pthread_t thread_id[THREAD_NUM];
+
+    init_log_file("../log_client.txt");
     
     pthread_create(&thread_id[0], NULL, start_networking, (void*)&args);
     pthread_create(&thread_id[1], NULL, start_client_interface,  (void*)&args);

@@ -8,7 +8,7 @@ int main() {
     if (server)
         fprintf(stderr, "<<<<<<     Server created successfully     >>>>>>\n\n");
 
-    run_server_backend(server, "127.0.0.1", 7000);
+    run_server_backend(server, "127.0.0.1", 8123);
 
     destroy_server(server);
 

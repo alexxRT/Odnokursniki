@@ -288,7 +288,7 @@ LIST_ERR_CODE list_text_dump (list_* list) {
     LIST_VALIDATE (list, THREAD_MODE::THREAD_UNSAFE);
     THREAD_UNLOCK(list, list->mode);
 
-    return LIST_ERR_CODE::SUCCESS;    
+    return LIST_ERR_CODE::SUCCESS;
 }
 
 //!!!GRAPHIC DUMP, SO BEAUTIFUL!!! 
@@ -310,7 +310,6 @@ LIST_ERR_CODE list_graph_dump (list_* list)
     splines=ortho;\n\
     node [ shape=record ];\n\
     ");
-
 
     for (size_t i = 0; i <= list->capacity; i ++) //initing each node, gives it color, data, order num
     {

@@ -14,7 +14,7 @@ void init_graph_dump_file (const char* const graph_dump_path);
 void destroy_graph_dump_file ();
 
 LIST_ERR_CODE list_text_dump  (list_* list); //thread safe
-LIST_ERR_CODE list_graph_dump (list_* list); //thread safe
+LIST_ERR_CODE list_graph_dump (list_* list);
 
 LIST_ERR_CODE print_list (list_* list, NODE_STATUS node_type, print_value_t print_val, THREAD_MODE mode);
 void          print_value_chat_message(list_elem* elem);

@@ -4,6 +4,7 @@
 #include "threads_safe.h"
 #include "chat_configs.h"
 #include "networking.h"
+#include "list_debug.h"
 
 //SEND MESSAGE
 //1) creat char buffer for body
@@ -305,9 +306,11 @@ int close_all_active_connections(server_t* server) {
     chat_message_t* msg = NULL;
 
     while (server->incoming_msg->size > 0) {
-        list_delete_left(server->incoming_msg, 0, &msg);
-        assert(msg != NULL && "Message null on list delete!");
+        LIST_ERR_CODE err_code = list_delete_left(server->incoming_msg, 0, &msg);
+        if (err_code != LIST_ERR_CODE::SUCCESS)
+            print_err(server->incoming_msg, err_code, __LINE__, __func__, THREAD_MODE::THREAD_UNSAFE);
 
+        assert(msg != NULL && "Message null before desruction");
         destroy_chat_message(msg);
     }
 
@@ -333,8 +336,9 @@ int close_all_active_connections(server_t* server) {
         TRY_READ_INCOMING(server);
 
         chat_message_t* msg = NULL;
-        list_delete_left(server->incoming_msg, 0, &msg);
-        assert (msg != NULL && "Message null from list delete");
+        LIST_ERR_CODE err_code = list_delete_left(server->incoming_msg, 0, &msg);
+        if (err_code != LIST_ERR_CODE::SUCCESS)
+            print_err(server->incoming_msg, err_code, __LINE__, __func__, THREAD_MODE::THREAD_UNSAFE);
 
         if (msg->msg_type == MSG_TYPE::ON_CLOSE)
             closing_confirms ++;
@@ -359,11 +363,12 @@ void* start_interface(void* args) {
     while (ALIVE_STAT(server)) {
         //block until smth will apear to read ---> avoid useless "while" looping
         TRY_READ_INCOMING(server);
-
+    
         //thread_safe
         chat_message_t* msg = NULL;
-        list_delete_left(server->incoming_msg, 0, &msg);
-        assert(msg != NULL && "Message null on list delete!");
+        LIST_ERR_CODE err_code = list_delete_left(server->incoming_msg, 0, &msg);
+        if (err_code != LIST_ERR_CODE::SUCCESS)
+            print_err(server->incoming_msg, err_code, __LINE__, __func__, THREAD_MODE::THREAD_UNSAFE);
 
         ERR_STAT request_stat = ERR_STAT::SUCCESS;
         if (msg) {
@@ -400,6 +405,8 @@ void run_server_backend(server_t* server, const char* ip_address, size_t port) {
     args.port = port;
     args.owner_struct = (void*)server;
     args.owner = OWNER::SERVER;
+
+    init_log_file("../log_server.txt");
 
     pthread_create(&pid[0], NULL, start_networking,(void*)&args);
     pthread_create(&pid[1], NULL, start_interface, (void*)&args);

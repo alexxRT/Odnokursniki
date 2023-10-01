@@ -17,7 +17,7 @@ enum class THREAD_MODE {
 
 enum class NODE_STATUS {
     FREE    = 1,
-    ENGAGED = 2, 
+    ENGAGED = 2,
     MASTER  = 3
 };
 

@@ -4,40 +4,70 @@
 #include "client.h"
 #include <iostream>
 #include <vector>
+#include <stdlib.h>
+#include <thread.h>
 
 FILE* THREAD_DUMP = NULL; //fopen("../threads_dump.txt", "a");
 const int THR_NAME_SIZE = 10;
 const int MAX_THR_NUM   = 10;
 
-enum class UPD_TYPE {
-    MUTEX = 1,
-    SEMOP = 2,
-    THREAD = 3, 
-    CREATE_APPROVE = 4
+enum class LOCKED_STAT {
+    LOCKED   = 1,
+    UNLOCKED = 0
+};
+
+#define LOCK_STAT( mutex )              \
+do {                                    \
+    if (mutex->try_lock()) {            \
+        mutex->unlock();                \
+        return LOCKED_STAT::UNLOCKED;   \
+    }                                   \
+                                        \
+    return LOCKED_STAT::LOCKED;         \
+                                        \
+}while(0)                               \
+
+#define RUNNING_THREAD_EXISTS( master ) master->num_running_threads
+
+enum class UPD {
+    CREATE_APPROVE   = 1, 
+    READY_TO_JOIN    = 2,
+    DUMP_THREADS     = 3,
+    ALLOW_JOIN       = 4,
+    EXIT_ALL_THREADS = 5,
 };
 
 enum class ON_UPDATE_ERR {
     SUCCESS         = 0,
-    MUTEX_NO_EXIST  = 1, 
-    SEMOP_NO_EXIST  = 2,
+    JOIN_FAILED     = 1,
     THREAD_NO_EXIST = 3,
     THREAD_INIT     = 4,
-    THREAD_FAILED   = 5
+    THREAD_FAILED   = 5,
+    NO_THREAD_EXIST = 6,
+    FINISH_UPDATE   = 7 
 };
 
-const char* get_status (int status) {
-    if (status)
+enum class THREAD_STATUS {
+    RUNNING         = 0,
+    LOCKED          = 1,
+    FINISHED        = 2,
+};
+
+const char* get_status (THREAD_STATUS status) {
+    if (status == THREAD_STATUS::RUNNING)
         return "running";
-    else 
+    else if (status == THREAD_STATUS::FINISHED)
         return "finished";
+    else if (status == THREAD_STATUS::LOCKED)
+        return "locked";
+    else 
+        return "unknown stat";
 }
 
 const char* err_msg(ON_UPDATE_ERR update_err){
     switch (update_err){
         case ON_UPDATE_ERR::MUTEX_NO_EXIST:
             return "No such mutex exists";
-        case ON_UPDATE_ERR::SEMOP_NO_EXIST:
-            return "No such semop exists";
         case ON_UPDATE_ERR::THREAD_NO_EXIST:
             return "No such thread exist";
         
@@ -48,113 +78,96 @@ const char* err_msg(ON_UPDATE_ERR update_err){
     return NULL;
 }
 
+typedef struct notification_ {
+    UPD type;
+    pthread_t thread_id;
+}notify_t;
+
+typedef struct queue_ {
+    //to lock queue while accessing
+    std::mutex            mutex;
+    std::vector<notify_t> queue;
+
+    //to avoid busy loop while waiting update
+    std::mutex              update_mutex;
+    std::condition_variable update_var;
+}ts_queue;
 
 typedef void* (*thread_func_t)(void*);
 
-typedef struct sem_ {
-    size_t      locked_stat;
-    size_t      sem_id;
-    size_t      lock_line;
-    const char* file;
-    pthread_t   locked_thread;
-    char        locked_thread_name[10];
-}sem_t_;
-
-typedef struct mutex_ {
-    size_t           locked_stat;
-    pthread_mutex_t* mutex;
-    size_t           lock_line;
-    const char*      file;
-    pthread_t        locked_thread;
-    char             locked_thread_name[10];
-}mut_t;
-
-
-
-typedef struct update_sem_ {
-    size_t      locked_stat;
-    size_t      sem_id;
-    size_t      lock_line;
-    const char* file;
-    pthread_t   locked_thread;
-    char        locked_thread_name[10];
-}update_sem_t;
-
+typedef struct condition_var_ {
+    LOCKED_STAT             locked_stat;
+    std::condition_variable var;
+    std::mutex              var_mutex;
+    size_t                  lock_line;
+    const char*             file;
+}cond_var_t;
 
 typedef struct safe_thread {
     thread_func_t thread_func;
     pthread_t     thread_id;
-    size_t        status; // indicate if thread is running or not
-    char thread_name[10];
+    THREAD_STATUS status;      // indicate if thread is running or not
+    size_t interrupted;
 
-    // contains all mutexes and sems info 
-    // that are used in thread
-    std::vector<sem_t_> sems;
-    std::vector<mut_t> muts;
+    // this queue is used to send
+    // updates to master thread
+    ts_queue*     notify_queue;
+
+    // this queue is used to recieve
+    // updates from master thread
+    ts_queue*     recieve_notify;
+    
+    // is used to pass arguments to the thread on start
+    void* thread_args;
+
+    // each thread has wait part
+    // its needed to interrupt thread
+    cond_var_t* blocking_var;
+
+    // this mutex is used to update 
+    // thread structure in ts way
+    std::mutex update_self;
 
     // on init, user can specify in which order 
     // threads should be started and finished
     // if no, threads are inited independently
     size_t        start_order;
     size_t        finish_order;
+
+    //simple char string for convinient identification
+    char          thread_name[10];
 }mthread_t;
 
 
-typedef mut_t update_mutex_t;
-typedef sem_t_ update_semop_t;
-typedef mthread_t update_thread_t;
-
-typedef struct update {
-    UPD_TYPE type;
-    update_mutex_t  mutex_update;
-    update_semop_t  semop_update;
-    update_thread_t thread_update;
-}update_t;
-
-typedef struct queue_ {
-    std::mutex            mutex;
-    std::vector<update_t> queue;
-}ts_queue;
-
 typedef struct thread_master_ {
     std::vector<mthread_t> threads;
-    
-    std::mutex              update_mutex;
-    std::condition_variable update_wait;
+    size_t num_running_threads;
 
     ts_queue* update_queue;
 }thread_master_t;
 
-void dump_mutex(mut_t* mutex) {
-    assert(mutex != NULL);
 
-    fprintf(THREAD_DUMP, "\tThread locked name [%s]\n", mutex->locked_thread_name);
-    fprintf(THREAD_DUMP, "\tMutex file: [%s]\n",        mutex->file);
-    fprintf(THREAD_DUMP, "\tMutex line: [%lu]\n",       mutex->lock_line);
+bool compare_threads(mthread_t thr1, mthread_t thr2) {
+    return (thr1.start_order < thr2.start_order);
+}
 
-    if (mutex->locked_stat)
-        fprintf(THREAD_DUMP, "\tMutex LOCKED\n");
+
+//------------------------------------------DUMP FUNCTIONS--------------------------------------//
+void dump_blocking_var(cond_var_t* cv) {
+    assert(cv != NULL);
+
+    fprintf(THREAD_DUMP, "\tThread locked name [%s]\n", cv->locked_thread_name);
+    fprintf(THREAD_DUMP, "\tCondition variable file: [%s]\n",        cv->file);
+    fprintf(THREAD_DUMP, "\tCondition variable line: [%lu]\n",       cv->lock_line);
+
+    if (cv->locked_stat)
+        fprintf(THREAD_DUMP, "\tCondition vavriable LOCKED\n");
     else 
-        fprintf(THREAD_DUMP, "\tMutex UNLOCKED\n");
+        fprintf(THREAD_DUMP, "\tCondition variable UNLOCKED\n");
 
     return;
 }
 
-void dump_sem(sem_t_* sem) {
-    assert(sem != NULL);
-
-    fprintf(THREAD_DUMP, "\n\tThread locked name [%s]\n", sem->locked_thread_name);
-    fprintf(THREAD_DUMP, "\tSemop id: [%lu\n]", sem->sem_id);
-    fprintf(THREAD_DUMP, "\tSemop file: [%s]\n",  sem->file);
-    fprintf(THREAD_DUMP, "\tSemop line: [%lu]\n", sem->lock_line);
-
-    if (sem->locked_stat)
-        fprintf(THREAD_DUMP, "\tSemop LOCKED\n\n");
-    else 
-        fprintf(THREAD_DUMP, "\tSemop UNLOCKED\n");
-
-    return;
-}
 
 void dump_threads (thread_master_t* master) {
     assert(master != NULL);
@@ -164,188 +177,49 @@ void dump_threads (thread_master_t* master) {
         fprintf(THREAD_DUMP, "THREAD [%s]\n", thread->thread_name);
         fprintf(THREAD_DUMP, "STATUS [%s]\n", get_status(thread->status));
 
-        fprintf(THREAD_DUMP, "\n--------------------MUTEX--------------\n");
-        for (int i = 0; i < thread->muts.size(); i ++)
-            dump_mutex(&thread->muts[i]);
-        fprintf(THREAD_DUMP, "\n----------------------------------------\n");
-
-        fprintf(THREAD_DUMP, "\n--------------------SEMOP--------------\n");
-        for (int i = 0; i < thread->sems.size(); i ++)
-            dump_sem(&thread->sems[i]);
-        fprintf(THREAD_DUMP, "\n----------------------------------------\n");
+        fprintf(THREAD_DUMP, "\n--------------------CONDITION VARIABLE--------------\n");
+            dump_blocking_var(thread->blocking_var);
+        fprintf(THREAD_DUMP, "\n----------------------------------------------------\n");
 
         fprintf(THREAD_DUMP, "\n");
     }
 }
+//-----------------------------------------------------------------------------------------------------//
 
-mthread_t* get_thread(thread_master_t* master, pthread_t pthread_id) {
-    for (int i = 0; i < master->threads.size(); i ++) {
-        if (master->threads[i].thread_id == pthread_id)
-            return &master->threads[i];
-    }
 
-    return NULL;
+
+//---------------------------------------------------CREATE FUNCTIONS---------------------------------------------------//
+
+
+thread_master_t* create_master() {
+    thread_master_t* master = new thread_master_t;
+    master->num_running_threads = 0;
+
+    return master;
 }
 
-mthread_t* get_thread(thread_master_t* master, char* thread_name) {
-    for (int i = 0; i < master->threads.size(); i ++) {
-        if (!strncmp(master->threads[i].thread_name, thread_name, strlen(thread_name)))
-            return &master->threads[i];
-    }
+void destroy_master(thread_master_t* master){
+    delete master;
 
-    return NULL;
+    return;
 }
 
-mut_t* get_mutex(mthread_t* thread, pthread_mutex_t* mutex) {
-    for (int i = 0; i < thread->muts.size(); i ++) {
-        if (thread->muts[i].mutex == mutex)
-            return &thread->muts[i];
-    }
+void create_blocking_var(thread_t* thread) {
+    std::scoped_lock(thread->update_self);
+        thread->blocking_var = new cond_var_t;
+        thread->blocking_var->lock_stat = LOCKED_STAT::UNLOCKED;
 
-    return NULL;
+    return;
 }
 
-sem_t_* get_semop(mthread_t* thread, size_t sem_id) {
-    for (int i = 0; i < thread->sems.size(); i ++) {
-        if (thread->sems[i].sem_id == sem_id)
-            return &thread->sems[i];
-    }
-
-    return NULL;
-}
-
-ON_UPDATE_ERR update_mutex(thread_master_t* master, update_mutex_t update) {
-    mthread_t* thread = get_thread(master, update.locked_thread);
-    if (!thread)
-        return ON_UPDATE_ERR::THREAD_NO_EXIST;
-
-    mut_t* mutex  = get_mutex (thread, update.mutex);
-    if (!mutex)
-        return ON_UPDATE_ERR::MUTEX_NO_EXIST;
-
-    (*mutex) = update;
-
-    return ON_UPDATE_ERR::SUCCESS;
-}
-
-ON_UPDATE_ERR update_semop(thread_master_t* master, update_semop_t update) {
-    mthread_t* thread = get_thread(master, update.locked_thread);
-    if (!thread)
-        return ON_UPDATE_ERR::THREAD_NO_EXIST;
-
-    sem_t_* semop  = get_semop (thread, update.sem_id);
-    if (!semop)
-        return ON_UPDATE_ERR::SEMOP_NO_EXIST;
-
-    (*semop) = update;
-
-    return ON_UPDATE_ERR::SUCCESS;
-}
-
-ON_UPDATE_ERR update_thread(thread_master_t* master, update_thread_t update) {
-    mthread_t* thread = get_thread(master, update.thread_name);
-    if (!thread)
-        return ON_UPDATE_ERR::THREAD_NO_EXIST;
-
-    (*thread) = update;
-
-    return ON_UPDATE_ERR::SUCCESS;
-}
-
-void wait_update(thread_master_t* master) {
-    while (master->update_queue->queue.empty()) {
-        std::unique_lock<std::mutex> ul(master->update_mutex);
-        master->update_wait.wait(ul);
-    }
-}
-
-ON_UPDATE_ERR update(thread_master_t* master) {
-    update_t update = {};
-    wait_update(master);
-
-    master->update_queue->mutex.lock();
-        update = master->update_queue->queue.back();
-        if (update.type != UPD_TYPE::CREATE_APPROVE)
-            master->update_queue->queue.pop_back();
-    master->update_queue->mutex.unlock();
-
-    ON_UPDATE_ERR err = ON_UPDATE_ERR::SUCCESS;
-
-    switch (update.type) {
-        case UPD_TYPE::MUTEX:
-            err = update_mutex(master, update.mutex_update);
-            break;
-        
-        case UPD_TYPE::SEMOP:
-            err = update_semop(master, update.semop_update);
-            break;
-
-        case UPD_TYPE::THREAD:
-            err = update_thread(master, update.thread_update);
-            break;
-
-        default:
-            break;
-    }
-
-    return err;
-}
-
-ON_UPDATE_ERR wait_init(thread_master_t* master) {
-    update_t update = {};
-    size_t   is_init = 0;
-
-    while (!is_init) {
-        wait_update(master);
-
-        master->update_queue->mutex.lock();
-            for (int i = 0; i < master->update_queue->queue.size(); i ++) {
-                update = master->update_queue->queue[i];
-
-                if (update.type == UPD_TYPE::CREATE_APPROVE) {
-                    master->update_queue->queue.pop_back();
-                    is_init = 1;
-
-                    break;
-                }
-            }
-        master->update_queue->mutex.unlock();
-    }
-    
-    return ON_UPDATE_ERR::SUCCESS;
-}
-
-void send_update(ts_queue *update_queue, update_t update) {
-    update_queue->mutex.lock();
-        update_queue->queue.push_back(update);
-    update_queue->mutex.unlock();
-}
-
-void add_mutex(mthread_t* thread, pthread_mutex_t* mutex) {
-    mut_t mutex_to_add = {};
-
-    mutex_to_add.mutex = mutex;
-    mutex_to_add.locked_stat = 0;
-
-    thread->muts.push_back(mutex_to_add);
-}
-
-void add_semop(mthread_t* thread, size_t sem_id) {
-    sem_t_ semop_to_add = {};
-
-    semop_to_add.sem_id = sem_id;
-    semop_to_add.locked_stat = 0;
-
-    thread->sems.push_back(semop_to_add);
-}
-
-void add_thread(thread_master_t* master, char* name, thread_func_t func,  size_t start_order  = -1,  \
-                                                                          size_t finish_order = -1) {
+void create_thread(thread_master_t* master, char* name, thread_func_t func, void* args, size_t start_order  = -1,  \
+                                                                                     size_t finish_order = -1) {
     mthread_t thread = {};
 
     size_t name_sz = std::min((int)strlen(name), THR_NAME_SIZE);
     memcpy(thread.thread_name, name , name_sz);
 
+    thread.thread_args = args;
     thread.thread_id = 0;
 
     thread.thread_func = func;
@@ -359,65 +233,253 @@ void add_thread(thread_master_t* master, char* name, thread_func_t func,  size_t
     return;
 }
 
-thread_master_t* create_master() {
-    thread_master_t* master = new thread_master_t;
+//--------------------------------------------------------------------------------------------------------------------//
 
-    return master;
+
+
+//--------------------------------------------------SYNCHRO METHODS---------------------------------------------------//
+
+
+ON_UPDATE_ERR wait_init(thread_master_t* master) {
+    assert(master);
+
+    size_t init_stat = 0;
+    notify_t notify = {};
+
+    std::unique_lock<std::mutex> lock (master->update_queue->mutex); 
+        std::vector<notify_t>::iterator it = master->update_queue->queue.begin();
+    lock.unlock();
+
+    while (!init_stat) {
+        wait_update(master);
+
+        lock.lock();
+            notify_t notify = master->update_queue->queue.back();
+
+            for (int i = 0; i < master->threads.size(); i ++) {
+                notify = master->update_queue->queue[i];
+
+                if (notify.type == UPD::CREATE_APPROVE) {
+                    std::advance(it, i);
+                    master->update_queue->queue.erase(it);
+                    init_stat = 1;
+
+                    break;
+                }
+            }
+        lock.unlock();
+    }
 }
 
-void destroy_master(thread_master_t* master){
-    delete master;
+ON_UPDATE_ERR wait_stop(thread_master_t* master, pthread_t thread_id) {
+    assert(master);
 
-    return;
+    size_t stop_stat = 0;
+    notify_t notify = {};
+
+    std::unique_lock<std::mutex> lock (master->update_queue->mutex); 
+        std::vector<notify_t>::iterator it = master->update_queue->queue.begin();
+    lock.unlock();
+
+    while (!stop_stat) {
+        wait_update(master);
+
+        lock.lock();
+            notify_t notify = master->update_queue->queue.back();
+
+            for (int i = 0; i < master->threads.size(); i ++) {
+                notify = master->update_queue->queue[i];
+
+                if (notify.type == UPD::READY_TO_JOIN && notify.thread_id == thread_id) {
+                    std::advance(it, i);
+                    master->update_queue->queue.erase(it);
+                    stop_stat = 1;
+
+                    break;
+                }
+            }
+        lock.unlock();
+    }
+
+    return ON_UPDATE_ERR::SUCCESS;
 }
 
-bool compare_threads(mthread_t thr1, mthread_t thr2) {
-    return (thr1.start_order < thr2.start_order);
+
+ON_UPDATE_ERR join_thread(thread_master_t* master, pthread_t thread_id) {
+    assert(master);
+
+    notify_t  notify = {.type = UPD::ALLOW_JOIN};
+    thread_t* thread = get_thread(master, thread_id);
+
+    {
+        std::scoped_lock<std::mutex> thr_lock(thread->update_self);
+        
+            std::scoped_lock<std::mutex> lock(thread->recieve_notify->mutex);
+            thread->recieve_notify->queue.push_back(notify);
+
+            std::unique_lock<std::mutex> cv_lock(thread->recieve_notify->update_var);
+            thread->recieve_notify->update_var.notify_one();
+    }
+
+    int join_err = pthread_join(thread_id, NULL);
+
+    if (join_err) {
+        std::cout << "Join returned with error: " << join_err << "\n";
+        return ON_UPDATE_ERR::JOIN_FAILED;
+    }
+
+    std::cout << "Thread " << thread->thread_name << " joined successfully!\n";
+    master->num_running_threads --;
+
+    return ON_UPDATE_ERR::SUCCESS;
 }
 
+ON_UPDATE_ERR interrupt_thread(thread_master_t* master, pthread_t thread_id) {
+    assert(master);
+
+    thread_t* thread = get_thread(master, thread_id);
+    if (!thread) {
+        std::cout << "No thread exist!\n";
+        return ON_UPDATE_ERR::NO_THREAD_EXIST;
+    }
+
+    {
+        std::scoped_lock<std::mutex> lock (thread->update_self);
+        thread->interrupted = 1;
+
+        std::unique_lock<std::mutex> cv_lock(thread->blocking_var->var_mutex);
+        thread->blocking_var->var.notify_one();
+    }
+
+    return ON_UPDATE_ERR::SUCCESS;
+
+}
 
 void run_threads(thread_master_t* master) {
-    assert(!master);
+    assert(master);
 
     std::sort(master->threads.begin(), master->threads.end(), compare_threads);
 
     for (int i = 0; i < master->threads.size(); i ++) {
         pthread_t thread_id = 0;
-        pthread_create(&thread_id, NULL, master->threads[i].thread_func, NULL);
+        pthread_create(&thread_id, NULL, master->threads[i].thread_func, master->threads[i].thread_args);
 
         //if start order was specified, wait until success creation 
         if (master->threads[i].start_order <= MAX_THR_NUM)
             ON_UPDATE_ERR err = wait_init(master);
 
-        fprintf(stderr, "Thread [%s\n] successfully initilized\n", master->threads[i].thread_name);
+        master->num_running_threads += 1;
+        std::cout << "Thread " << master->threads[i].thread_name << " initilized!\n";
     }
 }
 
-//simply finish server application on command "exit"
-void* governer(void* args) {
-    char command[NAME_SIZE];
+void join_threads(thread_master_t* master) {
+    assert(master);
 
-    fflush(stdin);
-    fscanf(stdin, "%s", command);
+    std::sort(master->threads.begin(), master->threads.end(), compare_threads);
 
-    thread_args* thr_args = (thread_args*)args;
+    for (int i = 0; i < master->threads.size(); i ++) {
+        thread_t* thread = master->thread[i];
+        pthread_t thread_id = 0;
+        
+        std::unique_lock<std::mutex> thr_lock(thread->update_self);
+            thread_id = thread->thread_id;
+        thr_lock.unlock();
 
-    if (!strncmp("exit", command, strlen("exit"))) {
-        if (thr_args->owner == OWNER::SERVER) {
-            server_t* server = (server_t*)thr_args->owner_struct;
-            THREADS_TERMINATE(server);
-        }
-        else if (thr_args->owner == OWNER::CLIENT){
-            client_t* client = (client_t*)thr_args->owner_struct;
-            THREADS_TERMINATE(client);
-        }
-        else 
-            fprintf (stderr, "Unknown owner: %d\n", thr_args->owner);
+        // now thread released
+        interrupt_thread(master, thread_id);
+
+        // wait until thread will finish execution
+        // and be ready to join
+        wait_stop(master, thread_id);
+
+
+        // now it can be safely joined
+        join_thread(master, thread_id);
     }
-    else {
-        fprintf (stderr, "<<<<<<     Governer terminated ACCIDENTLY     >>>>>>\n");
-        fprintf (stderr, "!!!Non of synchro on exit was performed!!!\n\n");
+}
+
+//--------------------------------------------------------------------------------------------------//
+
+
+
+//----------------------------------------NOTIFY API/HANDLING---------------------------------------//
+
+
+void wait_update(thread_master_t* master) {
+    while (master->update_queue->queue.empty()) {
+        std::unique_lock<std::mutex> ul(master->update_mutex);
+        master->update_wait.wait(ul);
     }
-    
+}
+
+ON_UPDATE_ERR update(thread_master_t* master) {
+    notify_t update = {};
+
+    {
+        std::scoped_lock<std::mutex> lock(master->update_queue->mutex);
+            update_t update = master->update_queue->queue.back();
+            master->update_queue->queue.pop_back();
+    }
+
+    ON_UPDATE_ERR err = ON_UPDATE_ERR::SUCCESS;
+
+    switch (update.type) {
+        case UPD::READY_TO_JOIN:
+            // if thread finished itself
+            err = join_thread(master, update.thread_id);
+            break;
+        case UPD::DUMP_THREADS:
+            err = dump_threads(master);
+            break;
+        case UPD::EXIT_ALL_THREADS:
+            std::cout << "Terminating threads ...\n";
+            err = ON_UPDATE_ERR::FINISH_UPDATE;
+            break;
+        default:
+            std::cout << "Bad update type: " << update.type << "\n";
+            break;
+    }
+
+    return err;
+}
+
+
+void push_notify(ts_queue *update_queue, notify_t update) {
+    std::scoped_lock<std::mutex> lock(update_queue->mutex);
+        update_queue->queue.push_back(update);
+
+        std::unique_lock<std::mutex> unique(update_queue->update_var);
+        update_queue->update_var.notify_one();
+}
+
+//--------------------------------------------------------------------------------------------------------------------//
+
+
+
+void* master_thread(void* mstr) {
+    assert(mstr);
+    thread_master_t* master = (thread_master_t*)mstr;
+
+    run_threads(master);
+
+    std::cout << "All threads are running!\n";
+
+    while (RUNNING_THREAD_EXISTS(master)) {
+        ON_UPDATE_ERR err = ON_UPDATE_ERR::SUCCESS;
+
+        wait_update(master);
+        err = update(master);
+
+        if (err == ON_UPDATE_ERR::FINISH_UPDATE)
+            break;
+    }
+
+    join_threads(master);
+
+    std::cout << "All threads are joined!\n";
+
+    pthread_exit(NULL);
     return NULL;
+
 }

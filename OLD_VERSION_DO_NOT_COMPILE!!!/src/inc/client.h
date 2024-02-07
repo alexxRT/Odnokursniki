@@ -8,15 +8,13 @@
 
 
 typedef struct client_ {
-    ALIVE_STAT   alive_stat;
     STATUS       status;
     uint64_t     name_hash;
     uv_stream_t* server_dest;
     uv_loop_t*   event_loop;
 
-    lock*  sem_lock;
-    list_* incoming_msg;
-    list_* outgoing_msg;
+    ts_list* incoming_msg;
+    ts_list* outgoing_msg;
 
 } client_t;
 

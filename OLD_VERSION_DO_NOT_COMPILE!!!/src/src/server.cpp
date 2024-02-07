@@ -5,6 +5,7 @@
 #include "chat_configs.h"
 #include "networking.h"
 #include "list_debug.h"
+#include <unistd.h>
 
 //SEND MESSAGE
 //1) creat char buffer for body
@@ -94,33 +95,20 @@ void fill_err_stat(ERR_STAT err_code, buffer_t* buf) {
 server_t* create_server(size_t client_num) {
     server_t* server = CALLOC(1, server_t);
     server->client_base = create_client_base(client_num);
-    server->alive_stat = ALIVE_STAT::ALIVE;
+    server->status = SERVER_STATUS::UP;
 
-    server->sem_lock            = CALLOC(1, lock);
-    server->sem_lock->sem_array = CALLOC(SEM_NUM, sembuf);
-
-    server->sem_lock->sem_array->sem_num = SEM_NUM;
-
-    size_t key    = ftok("server.cpp", 0);
-    size_t sem_id = semget(key, SEM_NUM, 0777 | IPC_CREAT);
-
-    assert(sem_id > 0 && "Invalid sem id");
-
-    server->sem_lock->semid = sem_id;
-
-    server->incoming_msg = list_create(10, THREAD_MODE::THREAD_SAFE, destroy_chat_message);
-    server->outgoing_msg = list_create(10, THREAD_MODE::THREAD_SAFE, destroy_chat_message);
+    server->incoming_msg = new ts_list(10);
+    server->outgoing_msg = new ts_list(10);
 
     return server;
 }
 
 void destroy_server(server_t* server) {
     destoy_client_base(server->client_base);
-    list_destroy(server->incoming_msg);
-    list_destroy(server->outgoing_msg);
+    
+    delete server->incoming_msg;
+    delete server->outgoing_msg;
 
-    FREE(server->sem_lock->sem_array);
-    FREE(server->sem_lock);
     FREE(server);
 }
 
@@ -138,12 +126,11 @@ void send_all_status_changed(server_t* server, base_client_t* client) {
         base_client_t* client = server->client_base->base + i;
 
         if (client->status == STATUS::ONLINE) {
-            chat_message_t* msg = create_chat_message(MSG_TYPE::SYSTEM);
-            msg->to = client->name_hash;
-            msg->read_message(msg, buf->buf);
+            chat_message_t msg = create_chat_message(MSG_TYPE::SYSTEM);
+            msg.to = client->name_hash;
+            msg.read_message(&msg, buf->buf);
 
-            list_insert_right(server->outgoing_msg, 0, msg);
-            RELEASE_OUTGOING(server);
+            server->outgoing_msg->insert_head(msg);
         }
     }
     destroy_type_buffer(buf);
@@ -159,15 +146,13 @@ void send_online_list(server_t* server, base_client_t* client) {
         base_client_t* client = server->client_base->base + i;
         if (client->status == STATUS::ONLINE)
             fill_body(buf, (void*)client->name, NAME_SIZE);
-        
     }
 
-    chat_message_t* msg = create_chat_message(MSG_TYPE::SYSTEM);
-    msg->to = client->name_hash;
-    msg->read_message(msg, buf->buf);
+    chat_message_t msg = create_chat_message(MSG_TYPE::SYSTEM);
+    msg.to = client->name_hash;
+    msg.read_message(&msg, buf->buf);
 
-    list_insert_right(server->outgoing_msg, 0, msg);
-    RELEASE_OUTGOING(server);
+    server->outgoing_msg->insert_head(msg);
 
     destroy_type_buffer(buf);
 }
@@ -237,21 +222,18 @@ ERR_STAT operate_command(server_t* server, CMD_CODE code, chat_message_t* msg) {
 
         default:
             fprintf(stderr, "UNKNOWN COMMAND\n");
-            fprintf(stderr, "Client full request: %s", msg->msg_body);
+            fprintf(stderr, "Client full request: %s\n", msg->msg_body);
         break;
     } 
     return ERR_STAT::BAD_REQUEST;
 }
 
 ERR_STAT operate_request(server_t* server, chat_message_t* msg) {
-    assert(msg != NULL);
-
     MSG_TYPE msg_type = msg->msg_type;
 
     switch (msg_type) {
         case MSG_TYPE::TXT_MSG:
-            list_insert_right(server->outgoing_msg, 0, msg);
-            RELEASE_OUTGOING(server);
+            server->outgoing_msg->insert_head(*msg);
         break;
 
         case MSG_TYPE::SYSTEM: {
@@ -303,15 +285,8 @@ ERR_STAT operate_request(server_t* server, chat_message_t* msg) {
 
 int close_all_active_connections(server_t* server) {
     //poping all messages out of incomming
-    chat_message_t* msg = NULL;
-
-    while (server->incoming_msg->size > 0) {
-        LIST_ERR_CODE err_code = list_delete_left(server->incoming_msg, 0, &msg);
-        if (err_code != LIST_ERR_CODE::SUCCESS)
-            print_err(server->incoming_msg, err_code, __LINE__, __func__, THREAD_MODE::THREAD_UNSAFE);
-
-        assert(msg != NULL && "Message null before desruction");
-        destroy_chat_message(msg);
+    while (!server->incoming_msg->empty()) {
+        server->incoming_msg->delete_head();
     }
 
     //closing all connections on interface finalization 
@@ -333,17 +308,13 @@ int close_all_active_connections(server_t* server) {
     //check if request amount == closed confirms
     //otherwise interface won't finalize
     while (closing_confirms != closing_req) {
-        TRY_READ_INCOMING(server);
+        server->incoming_msg->wait();
 
-        chat_message_t* msg = NULL;
-        LIST_ERR_CODE err_code = list_delete_left(server->incoming_msg, 0, &msg);
-        if (err_code != LIST_ERR_CODE::SUCCESS)
-            print_err(server->incoming_msg, err_code, __LINE__, __func__, THREAD_MODE::THREAD_UNSAFE);
+        chat_message_t msg = server->incoming_msg->get_head()->data;
+        server->incoming_msg->delete_head();
 
-        if (msg->msg_type == MSG_TYPE::ON_CLOSE)
+        if (msg.msg_type == MSG_TYPE::ON_CLOSE)
             closing_confirms ++;
-
-        destroy_chat_message(msg);
 
         fprintf(stderr, "\rConnection close [%lu/%lu]", closing_confirms, closing_req);
         fflush(stdout);
@@ -360,34 +331,32 @@ void* start_interface(void* args) {
     thread_args* thr_args = (thread_args*)args;
     server_t* server = (server_t*)(thr_args->owner_struct);
 
-    while (ALIVE_STAT(server)) {
+    while (server->status == SERVER_STATUS::UP) {
         //block until smth will apear to read ---> avoid useless "while" looping
-        TRY_READ_INCOMING(server);
-    
-        //thread_safe
-        chat_message_t* msg = NULL;
-        LIST_ERR_CODE err_code = list_delete_left(server->incoming_msg, 0, &msg);
-        if (err_code != LIST_ERR_CODE::SUCCESS)
-            print_err(server->incoming_msg, err_code, __LINE__, __func__, THREAD_MODE::THREAD_UNSAFE);
+        server->incoming_msg->wait();
 
-        ERR_STAT request_stat = ERR_STAT::SUCCESS;
-        if (msg) {
-            request_stat = operate_request(server, msg);
-            destroy_chat_message(msg); //destroy message after request opperated
-        }
+        
+        chat_message_t msg = server->incoming_msg->get_head()->data;
+        server->incoming_msg->delete_head();
+
+        ERR_STAT request_stat = operate_request(server, &msg);
 
         if (request_stat != ERR_STAT::SUCCESS) {
-            chat_message_t* err_msg = create_chat_message(MSG_TYPE::ERROR_MSG);
-            err_msg->error_stat = request_stat;
+            fprintf (stderr, "Bad Result On Request Operation\n");
+
+            // if message was recieved from client, reply bad request.
+            if (msg.from != 0){
+                chat_message_t err_msg = create_chat_message(MSG_TYPE::ERROR_MSG);
+                err_msg.error_stat     = request_stat;
+                err_msg.to             = err_msg.from;
             
-            list_insert_right(server->outgoing_msg, 0, err_msg);
-            RELEASE_OUTGOING(server);
+                server->outgoing_msg->insert_head(err_msg);
+            }
         }
     }
     
     close_all_active_connections(server);
 
-    fprintf(stderr, "All connections closed\n");
     fprintf(stderr, "<<<<<<     Interface finalization     >>>>>>\n");
 
     pthread_exit(NULL);
@@ -401,17 +370,16 @@ void run_server_backend(server_t* server, const char* ip_address, size_t port) {
     pthread_t   pid[THREAD_NUM];
     thread_args args = {};
 
-    args.ip   = ip_address;
-    args.port = port;
+    args.ip_addr      = ip_address;
+    args.port         = port;
     args.owner_struct = (void*)server;
-    args.owner = OWNER::SERVER;
+    args.owner        = OWNER::SERVER;
 
-    init_log_file("../log_server.txt");
+    InitLogFile("../log_server.txt");
 
     pthread_create(&pid[0], NULL, start_networking,(void*)&args);
     pthread_create(&pid[1], NULL, start_interface, (void*)&args);
     pthread_create(&pid[2], NULL, start_sender,    (void*)&args);
-    pthread_create(&pid[3], NULL, governer,        (void*)&args);
 
     for (int i = THREAD_NUM - 1; i >= 0; i--)
         pthread_join(pid[i], NULL);

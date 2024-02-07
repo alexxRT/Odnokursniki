@@ -6,6 +6,13 @@
 #include "networking.h"
 #include "list_debug.h"
 
+
+#ifdef DEBUG_VERSION
+    #define FPRINTF(str) fprintf(stderr, str)
+#else 
+    #define FPRINTF(str) (void*)0
+#endif
+
 //SEND MESSAGE
 //1) creat char buffer for body
 //2) fill body
@@ -51,26 +58,10 @@
 client_t* create_client() {
     client_t* client = CALLOC(1, client_t);
 
-    client->sem_lock = CALLOC(1, lock);
-    client->sem_lock->sem_array = CALLOC(1, sembuf);
-    client->sem_lock->sem_array->sem_num = SEM_NUM;
-
-    size_t key = ftok("client.cpp", 0);
-    client->sem_lock->semid = semget(key, SEM_NUM, 0777 | IPC_CREAT);
-
-    assert(client->sem_lock->semid > 0);
-
-    #ifdef DEBUG_VERSION
-        fprintf(stderr, "\n\n--------------DEBUG INFO---------------\n")
-        fprintf(stderr, "sem id value: %lu\n", client->sem_lock->semid);
-        fprintf(stderr, "-----------------------------------------\n\n");
-    #endif
-
-    client->incoming_msg = list_create(10, THREAD_MODE::THREAD_SAFE, destroy_chat_message);
-    client->outgoing_msg = list_create(10, THREAD_MODE::THREAD_SAFE, destroy_chat_message);
+    client->incoming_msg = new ts_list(10);
+    client->outgoing_msg = new ts_list(10);
     
-    client->alive_stat = ALIVE_STAT::ALIVE;
-    client->status     = STATUS::OFFLINE;
+    client->status     = STATUS::ONLINE;
     client->name_hash  = 0;
     client->event_loop = NULL;
     
@@ -78,26 +69,62 @@ client_t* create_client() {
 }
 
 void destroy_client(client_t* client) {
-    list_destroy(client->incoming_msg);
-    list_destroy(client->outgoing_msg);
+    delete client->incoming_msg;
+    delete client->outgoing_msg;
 
-    FREE(client->server_dest);
-    FREE(client->sem_lock->sem_array);
-    FREE(client->sem_lock);
     FREE(client);
 }
 
+void call_sender_finalization(client_t* client) {
+    assert(client);
+    chat_message_t msg = create_chat_message(MSG_TYPE::SENDER_SHUTDOWN);
+    client->outgoing_msg->insert_head(msg);
+
+    return;
+}
+
+void call_networking_finalization(client_t* client) {
+    assert(client);
+    // if uv_loop wasnt finalized
+    if(uv_loop_alive(client->event_loop)) {
+        FPRINTF("event loop stop called\n");
+        call_async_stop();
+    }
+}
+
 void* start_client_interface(void* args) {
-    //TO DO//
-    thread_args* thr_args = (thread_args*)args;
-    client_t* client = (client_*)thr_args->owner_struct;
+    thread_args* client_args = (thread_args*)args;
+    client_t* client = (client_t*)client_args->owner_struct;
 
+    fprintf(stderr, "<<<<<<     Client Interface Started     >>>>>>\n");
 
-    while (ALIVE_STAT(client)) {
-        TRY_READ_INCOMING(client);
+    while (client->status == STATUS::ONLINE) {
+        client->incoming_msg->wait();
+
+        chat_message_t msg = client->incoming_msg->get_head()->data;
+        client->incoming_msg->delete_head();
+
+        if (msg.msg_type == MSG_TYPE::ON_CLOSE) {
+            fprintf(stderr, "Disconnect confirmed!\n");
+            client->status = STATUS::OFFLINE;
+
+            call_sender_finalization(client);
+            call_networking_finalization(client);
+
+            continue;
+        }
+
+        #ifdef DEBUG_VERSION
+            fprintf (stderr, "Client Message Recieved!\n");
+            fprintf (stderr, "Message Type: %lu\n", msg.msg_type);
+        #endif
+        
     }
 
-    fprintf(stderr, "<<<<<<     Interface incomplteted, TO DO     >>>>>>\n");
+
+    fprintf(stderr, "<<<<<<     Interface Finalization     >>>>>>\n");
+
+    pthread_exit(NULL);
     return NULL;
 }
 
@@ -105,19 +132,18 @@ void* start_client_interface(void* args) {
 void run_client_backend(client_t* client, size_t port, const char* ip) {
     thread_args args = {};
 
-    args.owner = OWNER::CLIENT;
+    args.owner        = OWNER::CLIENT;
     args.owner_struct = (void*)client;
-    args.ip   = ip;
-    args.port = port; 
+    args.ip_addr      = ip;
+    args.port         = port; 
 
     pthread_t thread_id[THREAD_NUM];
 
-    init_log_file("../log_client.txt");
+    InitLogFile("../log_client.txt");
     
-    pthread_create(&thread_id[0], NULL, start_networking, (void*)&args);
-    pthread_create(&thread_id[1], NULL, start_client_interface,  (void*)&args);
-    pthread_create(&thread_id[2], NULL, start_sender,     (void*)&args);
-    pthread_create(&thread_id[3], NULL, governer,         (void*)&args);
+    pthread_create(&thread_id[0], NULL, start_networking,       (void*)&args);
+    pthread_create(&thread_id[1], NULL, start_client_interface, (void*)&args);
+    pthread_create(&thread_id[2], NULL, start_sender,           (void*)&args);
     
     for (int i = THREAD_NUM - 1; i >= 0; i --) {
         pthread_join(thread_id[i], NULL);

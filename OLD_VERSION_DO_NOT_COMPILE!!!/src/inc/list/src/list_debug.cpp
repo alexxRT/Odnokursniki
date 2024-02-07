@@ -6,46 +6,52 @@
 #include <assert.h>
 
 
+
 ///----------------------------------------------------FILES FOR DEBUG PRINT-------------------------------------------//
 
 static FILE* dump_file  = NULL; 
 static FILE* graph_file = NULL;
 static FILE* log_file   = NULL; 
 
+#define ELEM( lst, pos ) (lst->buffer  + pos)
+#define NEXT( lst, pos ) (lst->buffer + (lst->buffer + pos)->next)
+#define PREV( lst, pos ) (lst->buffer + (lst->buffer + pos)->prev) 
 
-void init_log_file (const char* const log_path)
+static const int HEAD_ID = 0;
+
+void InitLogFile (const char* const log_path)
 {
     log_file = fopen (log_path, "a");
     assert (log_file != NULL);
 }
 
-void destroy_log_file ()
+void DestroyLogFile ()
 {
     fflush (log_file);
     fclose (log_file);
     log_file = NULL;
 }
 
-void init_dump_file (const char* const dump_path)
+void InitDumpFile (const char* const dump_path)
 {
     dump_file = fopen (dump_path, "a");
     assert (dump_file != NULL);
 }
 
-void destroy_dump_file ()
+void DestroyDumpFile ()
 {
     fflush (dump_file);
     fclose (dump_file);
     dump_file = NULL;
 }
 
-void init_graph_dump_file (const char* const graph_dump_path)
+void InitGraphDumpFile (const char* const graph_dump_path)
 {
     graph_file = fopen (graph_dump_path, "w");
     assert (graph_file != NULL);
 }
 
-void destroy_graph_dump_file ()
+void DestroyGraphDumpFile ()
 {
     fflush (graph_file);
     fclose (graph_file);
@@ -58,61 +64,63 @@ void destroy_graph_dump_file ()
 
 //------------------------------------------------------LOGING ERRORS----------------------------------------------------------//
 
-void print_err (list_* list, LIST_ERR_CODE ErrCode, const int line, const char* func, THREAD_MODE mode)
+void PrintErr (my_list* list, LIST_ERR_CODE ErrCode, const int line, const char* func)
 {
     assert (log_file != NULL && "Please init log file");
-    THREAD_LOCK(list, mode);
 
     switch (ErrCode)
     {
-        case LIST_ERR_CODE::LIST_NULL:
+        case LIST_NULL:
             fprintf (log_file, "LIST is a NULL ptr ");
             break;
-        case LIST_ERR_CODE::DATA_NULL:
+        case DATA_NULL:
             fprintf (log_file, "LIST [%p] has NULL buffer ptr ", list);
             break;
-        case LIST_ERR_CODE::LIST_OVERFLOW:
+        case LIST_OVERFLOW:
             fprintf (log_file, "LIST [%p] overflowed, size - [%lu], capacity - [%lu] ", list, list->size, list->capacity);
             break;
-        case LIST_ERR_CODE::LIST_UNDERFLOW:
+        case LIST_UNDERFLOW:
             fprintf (log_file, "LIST [%p] underflowed, size - [%lu], capacity - [%lu] ",list, list->size, list->capacity);
             break;
-        case LIST_ERR_CODE::CAPACITY_INVALID:
+        case CAPACITY_INVALID:
             fprintf (log_file, "LIST [%p] capacity equal zero - [%lu] ", list, list->capacity);
             break;
-        case LIST_ERR_CODE::WRONG_SIZE:
+        case WRONG_SIZE:
             fprintf (log_file, "LIST [%p] has incorrect size - [%lu] ", list, list->size);
             break;
-        case LIST_ERR_CODE::BROAKEN_LOOP:
-            fprintf (log_file, "LIST [%p] the loop is broaken ", list);
+        case BROKEN_LOOP_ENGAGED:
+            fprintf (log_file, "LIST [%p] the ENGAGED loop is broken ", list);
             break;
-        case LIST_ERR_CODE::NULL_LINK:
+        case BROKEN_LOOP_FREE:
+            fprintf (log_file, "LIST [%p] the FREE loop is broken ", list);
+            break;
+        case NULL_LINK:
             fprintf (log_file, "LIST [%p] one of elems has invalid NULL link ", list);
             break;
-        case LIST_ERR_CODE::WRONG_ID:
-            fprintf (log_file, "LIST [%p] Elem's ID you use is invalid, please check your list ", list);
+        case WRONG_POS:
+            fprintf (log_file, "LIST [%p] Elem's position you use is invalid, please check your list ", list);
             break;
-        case LIST_ERR_CODE::WRONG_INDX:
-            fprintf (log_file, "LIST [%p] Elem's INDEX is invalid, please check your list ", list);
+        case WRONG_INDX:
+            fprintf (log_file, "LIST [%p] Elem's array index is invalid, please check your list ", list);
             break;
-        case LIST_ERR_CODE::HEAD_DELEATE:
+        case HEAD_DELEATE:
             fprintf (log_file, "LIST [%p] Trying to delete HEAD! ", list);
             break;
-        case LIST_ERR_CODE::SUCCESS:
+        case HEAD_INSERT:
+            fprintf (log_file, "LIST [%p] Trying to insert by index in the place of HEAD! ", list);
+            break;
+        case SUCCESS:
             fprintf (log_file, "LIST [%p] is consistant!\n\n", list);
             break;
         default:
         {
             fprintf (log_file, "Unexpected error code is %d\n", ErrCode);
-            THREAD_UNLOCK(list, mode);
             assert (0 && "!!Unexpected error code in ErrPrint function!!\n");
         }
     }
 
-    if (ErrCode != LIST_ERR_CODE::SUCCESS)
+    if (ErrCode != SUCCESS)
         fprintf (log_file, "error happend in function [%s()] and on the line [%d]\n", func, line);
-
-    THREAD_UNLOCK(list, mode);
 
 }
 
@@ -122,134 +130,136 @@ void print_err (list_* list, LIST_ERR_CODE ErrCode, const int line, const char* 
 
 //---------------------------------------------------VALIDATION FUNCTIONS-------------------------------------------------//
 
-LIST_ERR_CODE list_fields_valid (list_* list);
-LIST_ERR_CODE engaged_list_valid (list_* list);
-LIST_ERR_CODE free_list_valid (list_* list);
+LIST_ERR_CODE ListFieldsValid (my_list* list);
+LIST_ERR_CODE EngagedListValid (my_list* list);
+LIST_ERR_CODE FreeListValid (my_list* list);
 
 
-LIST_ERR_CODE list_valid (list_* list, THREAD_MODE mode) {
-    THREAD_LOCK(list, mode);
+LIST_ERR_CODE ListValid (my_list* list)
+{
+    LIST_ERR_CODE ErrCode = SUCCESS;
 
-    LIST_ERR_CODE ErrCode = LIST_ERR_CODE::SUCCESS;
-
-    ErrCode = list_fields_valid  (list);
-    if (ErrCode != LIST_ERR_CODE::SUCCESS) {
-        THREAD_UNLOCK(list, mode);
+    ErrCode = ListFieldsValid  (list);
+    if (ErrCode)
         return ErrCode;
-    }
 
-    ErrCode = engaged_list_valid (list);
-    if (ErrCode != LIST_ERR_CODE::SUCCESS)  {
-        THREAD_UNLOCK(list, mode);
+    ErrCode = EngagedListValid (list);
+    if (ErrCode) 
+      return ErrCode;
+
+    ErrCode = FreeListValid    (list);
+    if (ErrCode) 
         return ErrCode;
-    }
 
-    ErrCode = free_list_valid    (list);
-    if (ErrCode != LIST_ERR_CODE::SUCCESS) {
-        THREAD_UNLOCK(list, mode);
-        return ErrCode;
-    }
-
-    THREAD_UNLOCK(list, mode);
 
     return ErrCode;
 }
 
-LIST_ERR_CODE list_fields_valid (list_* list)
+LIST_ERR_CODE ListFieldsValid (my_list* list)
 {
-    if (!list)                       return LIST_ERR_CODE::LIST_NULL;
-    if (!list->buffer)               return LIST_ERR_CODE::DATA_NULL;
-    if (list->size > list->capacity) return LIST_ERR_CODE::LIST_OVERFLOW;
-    if (list->capacity <= 0)         return LIST_ERR_CODE::CAPACITY_INVALID; // can not create list for 0 elems, its not resizable otherwise
+    if (!list)                       return LIST_NULL;
+    if (!list->buffer)               return DATA_NULL;
+    if (list->size > list->capacity) return LIST_OVERFLOW;
+    if (list->capacity <= 0)         return CAPACITY_INVALID; // can not create list for 0 elems, its not resizable otherwise
 
-    return LIST_ERR_CODE::SUCCESS;
+    return SUCCESS;
 }
 
-LIST_ERR_CODE engaged_list_valid (list_* list) //check if loop is safe and sound, no empty links
-{
-    int num_elems = list->size;
-    int counter = 0;
+LIST_ERR_CODE EngagedListValid (my_list* list) { //check if loop is safe and sound, no empty links
+    size_t num_elems = list->size;
+    size_t counter = 0;
 
-    for (size_t i = 0; i <= list->capacity; i ++)
-    {
+    for (size_t i = 0; i <= list->capacity; i ++) {
         if (list->buffer[i].status == NODE_STATUS::ENGAGED)
             counter ++;
     }
 
-    if (num_elems != counter)
+    if (num_elems != counter) {
+        printf ("WRONG SIZE IN ENGAGED LIST\n");
+        printf ("list size: %lu, counter %lu\n", num_elems, counter);
+
         return LIST_ERR_CODE::WRONG_SIZE;
+    }
     
-    list_elem* head = list->buffer;
-    list_elem* elem = head;
+    //list cycled on its head
+    if (list->size > 1 && ELEM(list, HEAD_ID)->next == HEAD_ID) {
+        printf ("broke first\n");
+        return LIST_ERR_CODE::BROKEN_LOOP_ENGAGED;
+    }
+    size_t head = HEAD_ID;
+    size_t elem = head;
 
     // it goes cloсkwise
-    for (int i = 0; i <= num_elems; i ++)
-    {
-        if (!NEXT(elem) || !PREV(elem))
-            return LIST_ERR_CODE::NULL_LINK;
-        elem = NEXT(elem);
-    }
+    for (size_t i = 0; i <= num_elems; i ++)
+        elem = NEXT(list, elem)->index;
 
-    if (elem != head)
-        return LIST_ERR_CODE::BROAKEN_LOOP;
+    if (elem != head) {
+        printf("broke second\n");
+        return LIST_ERR_CODE::BROKEN_LOOP_ENGAGED;
+    }
 
     //it goes counter-clockwise
-    for (int i = 0; i <= num_elems; i ++)
-    {
-        if (!NEXT(elem) || !PREV(elem))
-            return LIST_ERR_CODE::NULL_LINK;
-        elem = PREV(elem);
+    for (size_t i = 0; i <= num_elems; i ++)
+        elem = PREV(list, elem)->index;
+
+    if (elem != head) {
+        printf("brok third\n");
+        return LIST_ERR_CODE::BROKEN_LOOP_ENGAGED;
     }
 
-    if (elem != head)
-        return LIST_ERR_CODE::BROAKEN_LOOP;
-
-
+    // ? ? ? ? ? TODO IS IT CORRECT ? ? ? ? ? ?
     //double check, forward and backward
     //i store ptr, so they all should be valid   !!!
     //before it, check if size has correct value !!!
     //mark node where i started and compare where i ended
     //if they are not the same, the loop is broken, taa daaaa
-    //            /\                   /\
-    //            ||                   ||
-    //THIS DOES NOT WORK, LIST CAN BE CYCLED ON HEAD
 
-    return LIST_ERR_CODE::SUCCESS;
+    return SUCCESS;
 }
 
-LIST_ERR_CODE free_list_valid (list_* list)
-{
+LIST_ERR_CODE FreeListValid (my_list* list) {
     //free list is empty, nothing to check
-    int free_size = list->capacity - list->size;
-    if (!free_size)
-        return LIST_ERR_CODE::SUCCESS;
 
-    list_elem* head = list->free_head;
-    list_elem* elem = head;
+    size_t free_size = list->capacity - list->size;
+    size_t counter = 0;
+
+    for (size_t i = 0; i <= list->capacity; i ++) {
+        if (list->buffer[i].status == NODE_STATUS::FREE)
+            counter ++;
+    }
+
+    if (counter != free_size) {
+        printf ("WRONG SIZE IN FREE LIST\n");
+        printf ("free list size: %lu, counter %lu\n", free_size, counter);
+        return WRONG_SIZE;
+    }
+
+    if (!free_size)
+        return SUCCESS;
+
+    //free list cycled on its head
+    if (ELEM(list, list->free_head_id)->next == list->free_head_id && free_size > 1)
+        return BROKEN_LOOP_FREE;
+
+    size_t head = list->free_head_id;
+    size_t elem = head;
 
     // it goes cloсkwise
-    for (int i = 0; i < free_size; i ++)
-    {
-        if (!NEXT(elem) || !PREV(elem))
-            return LIST_ERR_CODE::NULL_LINK;
-        elem = NEXT(elem);
+    for (size_t i = 0; i < free_size; i ++) {
+        elem = NEXT(list, elem)->index;
     }
 
     if (elem != head)
-        return LIST_ERR_CODE::BROAKEN_LOOP;
+        return BROKEN_LOOP_FREE;
 
     //it goes counter-clockwise
-    for (int i = 0; i < free_size; i ++)
-    {
-        if (!NEXT(elem) || !PREV(elem))
-            return LIST_ERR_CODE::NULL_LINK;
-        elem = PREV(elem);
-    }
+    for (size_t i = 0; i < free_size; i ++)
+        elem = PREV(list, elem)->index;
 
     if (elem != head)
-        return LIST_ERR_CODE::BROAKEN_LOOP;
+        return BROKEN_LOOP_FREE;
 
-    return LIST_ERR_CODE::SUCCESS;
+    return SUCCESS;
 }
 
 //-------------------------------------------------------------------------------------------------------------------------------//
@@ -257,15 +267,15 @@ LIST_ERR_CODE free_list_valid (list_* list)
 
 //-----------------------------------------------------DUMP FUNCTIONS------------------------------------------------------------//
 
-LIST_ERR_CODE print_list (list_* list, int list_type, print_value_t print_val, THREAD_MODE mode);  //definition below
-//void print_value_int (list_elem* elem);                                         //   ||
-void print_value_chat_message(list_elem* elem);                                   //   ||
-                                                                                  //   \/
+LIST_ERR_CODE PrintList (my_list* list, NODE_STATUS node_type);  //definition below
+void PrintListElem      (my_list* list, size_t elem);                    //   ||
+                                                                         //   ||
+                                                                         //   \/
 
 
-LIST_ERR_CODE list_text_dump (list_* list) {
-    THREAD_LOCK  (list, list->mode);
-    LIST_VALIDATE(list, THREAD_MODE::THREAD_UNSAFE);
+LIST_ERR_CODE ListTextDump (my_list* list) {
+
+    LIST_VALIDATE (list);
 
     assert (dump_file != NULL && "Please init Dump file");
 
@@ -276,30 +286,25 @@ LIST_ERR_CODE list_text_dump (list_* list) {
     fprintf   (dump_file, "Now in the list [%lu/%lu] elems are engaged\n" , list->size, list->capacity);
 
     fprintf   (dump_file, "listing of engaged elems:\n");
-    print_list (list, NODE_STATUS::ENGAGED, print_value_chat_message, THREAD_MODE::THREAD_UNSAFE);
+    PrintList (list, NODE_STATUS::ENGAGED);
 
     fprintf   (dump_file, "Now in the list [%lu] elems are free\n", list->capacity - list->size);
 
     fprintf   (dump_file, "Listing of free elems:\n");
-    print_list (list, NODE_STATUS::FREE, print_value_chat_message, THREAD_MODE::THREAD_UNSAFE);
+    PrintList (list, NODE_STATUS::FREE);
 
     fprintf   (dump_file, "\n\n-------------------------LIST DUMP FINISHED-----------------------\n\n");
 
-    LIST_VALIDATE (list, THREAD_MODE::THREAD_UNSAFE);
-    THREAD_UNLOCK(list, list->mode);
+    LIST_VALIDATE (list);
 
-    return LIST_ERR_CODE::SUCCESS;
+    return SUCCESS;    
 }
 
 //!!!GRAPHIC DUMP, SO BEAUTIFUL!!! 
 
-int get_elem_id (list_* list, int index, NODE_STATUS stat);
+int GetElemPos (my_list* list, size_t index, NODE_STATUS stat);
 
-LIST_ERR_CODE list_graph_dump (list_* list)
-{
-    THREAD_LOCK  (list, list->mode);
-    LIST_VALIDATE(list, THREAD_MODE::THREAD_UNSAFE);
-
+LIST_ERR_CODE ListGraphDump (my_list* list) {
     assert (graph_file != NULL && "Please init GraphDump file");
 
     //initilizing starting attributes
@@ -311,46 +316,25 @@ LIST_ERR_CODE list_graph_dump (list_* list)
     node [ shape=record ];\n\
     ");
 
-    for (size_t i = 0; i <= list->capacity; i ++) //initing each node, gives it color, data, order num
-    {
-        if (list->buffer[i].status == NODE_STATUS::ENGAGED)
-        {
-            int id = get_elem_id (list, i, NODE_STATUS::FREE);
-            int wrong_id = static_cast<int>(LIST_ERR_CODE::WRONG_ID);
+    printf("\nSTART GRAPH DUMP\n");
 
-            if (id == wrong_id)
-                return LIST_ERR_CODE::WRONG_ID;
+    //initing each node, gives it color, data, order num
+    for (size_t i = 0; i <= list->capacity; i ++) { 
+        size_t pos = GetElemPos (list, i, list->buffer[i].status);
 
-            fprintf (graph_file, "\n\tNode%zu", i);
-            fprintf (graph_file, "[label = \"INDX: %zu|NUM: %d|MSG_TYPE: %d\";];\n", i, id, list->buffer[i].data->msg_type);
-            fprintf (graph_file, "\tNode%zu", i);
-            fprintf (graph_file, "[color = \"green\";];\n");
-        }
-        else if (list->buffer[i].status == NODE_STATUS::FREE)
-        {
-            int id = get_elem_id (list, i, NODE_STATUS::FREE);
-            int wrong_id = static_cast<int>(LIST_ERR_CODE::WRONG_ID);
+        fprintf (graph_file, "\n\tNode%zu", i);
+        fprintf (graph_file, "[label = \"INDX: %zu|NUM: %lu|DATA: %d\";];\n", i, pos, list->buffer[i].data);
+        fprintf (graph_file, "\tNode%zu", i);
 
-            if (id == wrong_id)
-                return LIST_ERR_CODE::WRONG_ID;
-
-            fprintf (graph_file, "\n\tNode%zu", i);
-            fprintf (graph_file, "[label = \"INDX: %zu|NUM: %d|MSG_TYPE: %d\";];\n", i, id, list->buffer[i].data->msg_type);
-            fprintf (graph_file, "\tNode%zu", i);
-            fprintf (graph_file, "[color = \"red\";];\n");
-        }
-        else if (list->buffer[i].status == NODE_STATUS::MASTER)
-        {
-            int id = get_elem_id (list, i, NODE_STATUS::FREE);
-            int wrong_id = static_cast<int>(LIST_ERR_CODE::WRONG_ID);
-
-            if (id == wrong_id)
-                return LIST_ERR_CODE::WRONG_ID;
-
-            fprintf (graph_file, "\n\tNode%zu", i);
-            fprintf (graph_file, "[label = \"INDX: %zu|NUM: %d|MSG_TYPE: %d\";];\n", i, id, list->buffer[i].data->msg_type);
-            fprintf (graph_file, "\tNode%zu", i);
-            fprintf (graph_file, "[color = \"purple\";];\n");
+        switch (list->buffer[i].status) {
+            case NODE_STATUS::ENGAGED:
+                 fprintf (graph_file, "[color = \"green\";];\n");
+                 break;
+            case NODE_STATUS::MASTER:
+                fprintf (graph_file, "[color = \"purple\";];\n");
+                break;
+            case NODE_STATUS::FREE:
+                fprintf(graph_file, "[color = \"red\";];\n");
         }
     }
 
@@ -363,25 +347,19 @@ LIST_ERR_CODE list_graph_dump (list_* list)
 
     for (size_t i = 0; i <= list->capacity; i++)
     {
-        if (list->buffer[i].status == NODE_STATUS::ENGAGED || list->buffer[i].status == NODE_STATUS::MASTER)
-        {
-            int next_indx = list->buffer[i].next->index;
+        if (list->buffer[i].status == NODE_STATUS::ENGAGED || list->buffer[i].status == NODE_STATUS::MASTER) {
+            int next_indx = NEXT(list, i)->index;
             fprintf (graph_file, "\tNode%zu -> Node%d [constraint = false;];\n", i, next_indx);
         }
-        else 
-        {
-            int next_indx = list->buffer[i].next->index;
+        else {
+            int next_indx = NEXT(list, i)->index;
             fprintf (graph_file, "\tNode%zu -> Node%d [constraint = false;];\n", i, next_indx);
         }
     }
 
     fprintf (graph_file, "}\n");
 
-
-    LIST_VALIDATE(list, THREAD_MODE::THREAD_UNSAFE);
-    THREAD_UNLOCK(list, list->mode);
-
-    return LIST_ERR_CODE::SUCCESS;
+    return SUCCESS;
 }
 
 //-----------------------------------------------------------------------------------------------------------------------//
@@ -390,110 +368,95 @@ LIST_ERR_CODE list_graph_dump (list_* list)
 //------------------------------------------------------PRINT LIST FUNCTIONS---------------------------------------------//
 
 
-LIST_ERR_CODE print_list (list_* list, NODE_STATUS node_type, print_value_t print_val, THREAD_MODE mode)
-{
-    THREAD_LOCK(list, mode);
-    LIST_VALIDATE (list, THREAD_MODE::THREAD_UNSAFE);
+LIST_ERR_CODE PrintList (my_list* list, NODE_STATUS node_type) {
+    LIST_VALIDATE (list);
 
-    if (node_type == NODE_STATUS::ENGAGED)
-    {
-        list_elem* head =       list->buffer;
-        list_elem* debug_elem = NEXT(head);
+    if (node_type == NODE_STATUS::ENGAGED) {
+        size_t head =       HEAD_ID;
+        size_t debug_elem = ELEM(list, head)->next;
 
         int order_num = 1;
 
-        while (debug_elem != head)
-        {
+        while (debug_elem != head) {
             fprintf (dump_file,"\nOrder number [%d]\n", order_num);
-            print_val(debug_elem);
+            PrintListElem (list, debug_elem);
 
             order_num ++;
-            debug_elem = NEXT(debug_elem);
+            debug_elem = NEXT(list, debug_elem)->index;
         }
     }
-    else if (node_type == NODE_STATUS::FREE)
-    {
-        list_elem* head = FREE_HEAD(list);
+    else if (node_type == NODE_STATUS::FREE) {
+        size_t head = list->free_head_id;
 
-        if (head == list->buffer)
-            return LIST_ERR_CODE::SUCCESS;
+        if (head == HEAD_ID)
+            return SUCCESS;
         
         int order_num = 1;
 
         fprintf (dump_file, "\nOrder number [%d]\n", order_num);
-        print_val(head);
+        PrintListElem (list, head);
         order_num ++;
 
-        list_elem* debug_elem = NEXT(head);
+        size_t debug_elem = ELEM(list, head)->next;
 
-        while (debug_elem != head)
-        {
+        while (debug_elem != head) {
             fprintf (dump_file, "\nOrder number [%d]\n", order_num);
-            print_val(debug_elem);
+            PrintListElem (list, debug_elem);
 
             order_num ++;
-            debug_elem = NEXT(debug_elem);
+            debug_elem = NEXT(list, debug_elem)->index;
         }
     }
 
-    LIST_VALIDATE(list, THREAD_MODE::THREAD_UNSAFE);
-    THREAD_UNLOCK(list, mode);
+    LIST_VALIDATE (list);
 
-    return LIST_ERR_CODE::SUCCESS;
+    return SUCCESS;
 }
 
-// void print_value_int (list_elem* elem)
-// {
-//     fprintf (dump_file,  "Elem address [%p]\n",   elem);
-//     fprintf (dump_file,  "Elem index   [%d]\n",   elem->index);
-//     fprintf (dump_file,  "Elem data    [%d]\n",   *(elem->data));
-//     fprintf (dump_file,  "Elem status  [%d]\n\n", elem->status);
+void PrintListElem (my_list* list, size_t elem) {
+    fprintf (dump_file,  "Elem address [%p]\n",   ELEM(list, elem));
+    fprintf (dump_file,  "Elem index   [%lu]\n",  ELEM(list, elem)->index);
+    fprintf (dump_file,  "Elem data    [%d]\n",   ELEM(list, elem)->data);
+    fprintf (dump_file,  "Elem status  [%d]\n\n", ELEM(list, elem)->status);
 
-//     return;
-// }
-
-
-void print_value_chat_message(list_elem* elem) {
-    fprintf (dump_file,  "Elem address [%p]\n",   elem);
-    fprintf (dump_file,  "Elem index   [%d]\n",   elem->index);
-
-    fprintf(dump_file, "MSG TYPE:       %d\n", elem->data->msg_type);
-    fprintf(dump_file, "Message body:   %s\n", elem->data->msg_body);
-
-    fprintf (dump_file,  "Elem status  [%d]\n\n", elem->status);
+    return;
 }
 
 //----------------------------------------------------------------------------------------------------------------------//
 
 // function return elem's logical order number, by giving array index
-int get_elem_id (list_* list, int index, NODE_STATUS stat)
-{
-    LIST_VALIDATE (list, THREAD_MODE::THREAD_UNSAFE);
+int GetElemPos (my_list* list, size_t index, NODE_STATUS stat) {
+    LIST_VALIDATE (list);
 
-    list_elem* head = NULL;
+    size_t head = 0;
 
-    if (stat == NODE_STATUS::ENGAGED)
-        head = list->buffer;
+    if (stat == NODE_STATUS::ENGAGED ||
+        stat == NODE_STATUS::MASTER)
+        head = HEAD_ID;
     else 
-        head = FREE_HEAD(list);
+        head = list->free_head_id;
 
-    int counter = 0;
+    size_t counter = 0;
 
-    if (index == head->index)
+    if (index == ELEM(list, head)->index)
         return counter;
 
     counter++;
 
-    list_elem* current_elem = NEXT(head);
+    size_t current_elem = ELEM(list, head)->next;
 
-    while (current_elem != head)
-    {
-        if (index == current_elem->index)
+    while (current_elem != head) {
+        if (index == current_elem)
             return counter;
         
-        current_elem = NEXT(current_elem);
+        current_elem = ELEM(list, current_elem)->next;
+        //current_elem = NEXT(list, current_elem)->index;
+
+        if (counter >= list->capacity)
+            break;
+
         counter++;
     }
 
-    return static_cast<int>(LIST_ERR_CODE::WRONG_ID); // its only returned if no elem was not found
+    return WRONG_INDX; // its only returned if no elem was not found
 }

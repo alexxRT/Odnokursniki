@@ -24,7 +24,8 @@ enum class MSG_TYPE : int {
     TXT_MSG   = 1,
     BROADCAST = 2,
     ERROR_MSG = 3,
-    ON_CLOSE = 4
+    ON_CLOSE = 4,
+    SENDER_SHUTDOWN = 5
 };
 
 struct message_; //forward declaration to init fill message handler
@@ -63,7 +64,7 @@ void destroy_type_buffer(buffer_t* type_buffer);
 
 MSG_TYPE get_msg_type (const char* msg_buffer); 
 
-chat_message_t* create_chat_message (MSG_TYPE type);
-void destroy_chat_message (chat_message_t* msg);
+chat_message_t create_chat_message (MSG_TYPE type);
+
 
 #endif

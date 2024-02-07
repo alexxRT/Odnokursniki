@@ -1,45 +1,44 @@
 #ifndef LIST_DEBUG
 #define LIST_DEBUG
 
-#include "list.h"
 
-typedef void (*print_value_t)(list_elem*);
-
-
-void init_log_file (const char* const log_path);
-void destroy_log_file ();
-void init_dump_file (const char* const dump_path);
-void destroy_dump_file ();
-void init_graph_dump_file (const char* const graph_dump_path);
-void destroy_graph_dump_file ();
-
-LIST_ERR_CODE list_text_dump  (list_* list); //thread safe
-LIST_ERR_CODE list_graph_dump (list_* list);
-
-LIST_ERR_CODE print_list (list_* list, NODE_STATUS node_type, print_value_t print_val, THREAD_MODE mode);
-void          print_value_chat_message(list_elem* elem);
-//void          print_value_int (list_elem* elem);
+// TO DO 
+// add flag that turns on/off debug logs and outputs
+// list will be still verified but without any text warnings
 
 
+void InitLogFile (const char* const log_path);
+void DestroyLogFile ();
+void InitDumpFile (const char* const dump_path);
+void DestroyDumpFile ();
+void InitGraphDumpFile (const char* const graph_dump_path);
+void DestroyGraphDumpFile ();
 
-LIST_ERR_CODE list_valid (list_* list, THREAD_MODE mode);
-void          print_err  (list_* list, LIST_ERR_CODE ErrCode, const int line, const char* func, THREAD_MODE mode);
+LIST_ERR_CODE ListTextDump (my_list* list);
+LIST_ERR_CODE ListGraphDump (my_list* list);
+
+LIST_ERR_CODE PrintList     (my_list* list, NODE_STATUS node_type);  //definition below
+void          PrintListElem (my_list* list, size_t elem);
+
+
+LIST_ERR_CODE ListValid (my_list* list);
+void          PrintErr (my_list* list, LIST_ERR_CODE ErrCode, const int line, const char* func);
 
 
 #ifdef DEBUG_VERSION //this custom assert will print error that happened and 'll exit function
-#define LIST_VALIDATE( lst_ptr, mode )                                 \
+#define LIST_VALIDATE( lst_ptr )                                 \
 do{                                                              \
-    LIST_ERR_CODE ErrCode = list_valid (lst_ptr, mode);                 \
-    if (ErrCode != SUCCESS)                                      \
+    LIST_ERR_CODE ErrCode = ListValid (lst_ptr);                 \
+    if (ErrCode != LIST_ERR_CODE::SUCCESS)                       \
         {                                                        \
-            print_err (lst_ptr, ErrCode, __LINE__, __func__, mode);     \
+            PrintErr (lst_ptr, ErrCode, __LINE__, __func__);     \
             return ErrCode;                                      \
         }                                                        \
 }                                                                \
 while (0)                                                        \
 
 #else
-#define LIST_VALIDATE( lst_ptr, mode ) (void*)0
+#define LIST_VALIDATE( lst_ptr ) (void*)0
 #endif
 
 

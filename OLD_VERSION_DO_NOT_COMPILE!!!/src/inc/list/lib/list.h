@@ -4,48 +4,35 @@
 #include <stdlib.h>
 #include "messages.h"
 
-#define NEXT(el)       (el)->next
-#define PREV(el)       (el)->prev
-#define FREE_HEAD(lst) (lst)->free_head
-
 typedef chat_message_t list_data_t;
+#define ZERO_DATA {}
 
-enum class THREAD_MODE {
-    THREAD_SAFE = 1,
-    THREAD_UNSAFE = 2
-};
-
-enum class NODE_STATUS {
-    FREE    = 1,
-    ENGAGED = 2,
-    MASTER  = 3
-};
-
-typedef struct _list_elem
+enum class NODE_STATUS : int
 {
-    struct _list_elem* next;
-    struct _list_elem* prev;
-    list_data_t* data;
-    int index;
+    FREE    = 1,
+    ENGAGED = 2, 
+    MASTER  = 3 
+};
+
+typedef struct _list_elem {
     NODE_STATUS status;
+    size_t next;
+    size_t prev;
+    size_t index;
+    list_data_t data;
 } list_elem;
 
 
-typedef struct my_list_
-{
+typedef struct _list {
     list_elem* buffer;
-    list_elem* free_head;
-    pthread_mutex_t lock;
-    size_t size;
-    size_t capacity;
-    size_t min_capacity;
-    THREAD_MODE mode;
-
-    void (*destructor)(list_data_t* data);
-} list_;
+    size_t     free_head_id;
+    size_t     size;
+    size_t     capacity;
+    size_t     min_capacity;
+} my_list;
 
 
-typedef enum class ERROR_CODES
+typedef enum ERROR_CODES
 {
     SUCCESS          = 0,
     LIST_NULL        = 1,
@@ -54,44 +41,42 @@ typedef enum class ERROR_CODES
     LIST_UNDERFLOW   = 4,
     CAPACITY_INVALID = 5,
     WRONG_SIZE       = 6,
-    BROAKEN_LOOP     = 7,
+    BROKEN_LOOP_ENGAGED = 7,
     NULL_LINK        = 8,
     HEAD_DELEATE     = 9,
-    WRONG_ID         = -1,
-    WRONG_INDX       = -2,
-} //these error codes can be normaly returned by functions, so they have "imposble" value 
-LIST_ERR_CODE;
-
-#define THREAD_LOCK( list, mode )              \
-do {                                           \
-    if (mode == THREAD_MODE::THREAD_SAFE)      \
-        pthread_mutex_lock(&list->lock);       \
-}while(0)                                      \
+    HEAD_INSERT      = 10,
+    BROKEN_LOOP_FREE = 11,
+    WRONG_INDX       =-2, //these error codes can be normaly returned by functions, so they have "imposble" value 
+    WRONG_POS        =-1 //
+} LIST_ERR_CODE;
 
 
-#define THREAD_UNLOCK( list, mode )            \
-do {                                           \
-    if(mode == THREAD_MODE::THREAD_SAFE)       \
-        pthread_mutex_unlock(&list->lock);     \
-}while(0)                                      \
+#define ELEM( lst, indx ) ((lst)->buffer  + indx)
+#define NEXT( lst, indx ) ((lst)->buffer + (((lst)->buffer + indx)->next))
+#define PREV( lst, indx ) ((lst)->buffer + (((lst)->buffer + indx)->prev)) 
 
-list_*        list_create   (size_t elem_num, THREAD_MODE mode, void (*init_destructor)(list_data_t*));
-LIST_ERR_CODE list_destroy  (list_* list);
 
-LIST_ERR_CODE list_insert_right (list_* list, size_t id, list_data_t* data);
-LIST_ERR_CODE list_insert_left  (list_* list, size_t id, list_data_t* data);
+LIST_ERR_CODE ListInit     (my_list* list, size_t elem_num);
+LIST_ERR_CODE ListDestroy  (my_list* list);
 
-LIST_ERR_CODE list_delete       (list_* list, size_t id, list_data_t** data);
-LIST_ERR_CODE list_delete_left  (list_* list, size_t id, list_data_t** data);
-LIST_ERR_CODE list_delete_right (list_* list, size_t id, list_data_t** data);
 
-LIST_ERR_CODE list_insert_index (list_* list, size_t index, list_data_t* data);
-LIST_ERR_CODE list_delete_index (list_* list, size_t index, list_data_t** data);
+/// @brief 
+/// @param list 
+/// @param pos order position of the insert, if counts clockwise
+/// @param data data to be placed in list node, copy is used to prevent changes from the outside
+/// @return 
+LIST_ERR_CODE ListInsertHead(my_list* list, list_data_t data);
+LIST_ERR_CODE ListInsert    (my_list* list, size_t pos, list_data_t data);
 
-LIST_ERR_CODE list_resize(list_* list, THREAD_MODE mode);
+LIST_ERR_CODE ListDelete (my_list* list, size_t pos);
 
-list_elem* get_elem(list_* list, size_t id, THREAD_MODE mode);
+LIST_ERR_CODE ListInsertIndex (my_list* list, size_t index, list_data_t data);
+LIST_ERR_CODE ListDeleteIndex (my_list* list, size_t index);
 
-LIST_ERR_CODE make_list_great_again (list_* list, THREAD_MODE mode);
+LIST_ERR_CODE ListResize (my_list* list);
+
+size_t GetElemIndex (my_list* list, size_t pos);
+
+LIST_ERR_CODE MakeListGreatAgain (my_list* list);
 
 #endif

@@ -34,13 +34,16 @@
 // hot parts: write-read incomming list
 //            write-read outgoing list
 
+enum SERVER_STATUS : int {
+    DOWN = 0,
+    UP   = 1 
+};
 
 typedef struct server_ {
-    ALIVE_STAT alive_stat;
+    SERVER_STATUS status;
     chat_base_t* client_base;
-    list_* incoming_msg; 
-    list_* outgoing_msg;
-    lock* sem_lock;
+    ts_list* incoming_msg; 
+    ts_list* outgoing_msg;
     uv_loop_t* event_loop;
     
 }server_t;

@@ -139,26 +139,19 @@ int write_error_msg(chat_message_t* msg, char* buffer) {
 };
 
 
-chat_message_t* create_chat_message (MSG_TYPE type) {
-    chat_message_t* msg = CALLOC(1, chat_message_t);
-    int handle_indx = static_cast<int>(type);
-    assert(handle_indx >= 0 && "Invalid msg type on creation");
+chat_message_t create_chat_message (MSG_TYPE type) {
+    chat_message_t msg = {};
+    int indx = static_cast<int>(type);
+    assert(indx >= 0 && "Invalid msg type on creation");
 
-    msg->msg_type = type;
-    if (handle_indx < RW_HANDLERS_NUM) {
-        msg->read_message  = read_handlers[static_cast<int>(type)];
-        msg->write_message = write_handlers[static_cast<int>(type)];
+    msg.msg_type = type;
+    if (indx < RW_HANDLERS_NUM) {
+        msg.read_message  = read_handlers[indx];
+        msg.write_message = write_handlers[indx];
     }
     //othrewise emty "header-kind" message
 
     return msg;
-};
-
-void destroy_chat_message (chat_message_t* msg) {
-    bzero((void*)msg, sizeof(chat_message_t));
-    FREE(msg);
-
-    return;
 };
 
 buffer_t* create_buffer(MSG_TYPE type) {

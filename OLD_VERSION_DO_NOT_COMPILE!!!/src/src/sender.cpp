@@ -5,6 +5,13 @@
 #include "list.h"
 #include "list_debug.h"
 
+typedef enum SENDER_STATUS : int {
+    ACTIVE,
+    SHUTDOWN
+};
+
+SENDER_STATUS status = SENDER_STATUS::SHUTDOWN;
+
 ERR_STAT send_message(server_t* server, chat_message_t* msg) {
     base_client_t* client = get_client(server->client_base, msg->to);
     if (client) {
@@ -33,62 +40,65 @@ ERR_STAT send_message(client_t* client, chat_message_t* msg) {
 
 
 void run_sender(server_t* server) {
-    while (ALIVE_STAT(server)) {
-        chat_message_t* msg = NULL;
+    while (status == SENDER_STATUS::ACTIVE) {
+        chat_message_t msg = {};
 
-        TRY_READ_OUTGOING(server); //block until recieve something
+        server->outgoing_msg->wait(); //block until recieve something
         
         //thread safe
-        LIST_ERR_CODE err_code = list_delete_left(server->outgoing_msg, 0, &msg);
-        if (err_code != LIST_ERR_CODE::SUCCESS)
-            print_err(server->outgoing_msg, err_code, __LINE__, __func__, THREAD_MODE::THREAD_UNSAFE);
+        msg = server->outgoing_msg->get_head()->data;
+        server->outgoing_msg->delete_head();
 
-        ERR_STAT send_stat = ERR_STAT::SUCCESS;
-        if (msg) {
-            send_stat = send_message(server, msg);
-            destroy_chat_message(msg); //destroy message after sent
+        if (msg.msg_type == MSG_TYPE::SENDER_SHUTDOWN) {
+            status = SENDER_STATUS::SHUTDOWN;
+            continue;
         }
 
+        ERR_STAT send_stat = ERR_STAT::SUCCESS;
+        send_stat = send_message(server, &msg);
+
         if (send_stat != ERR_STAT::SUCCESS) {
-            fprintf(stderr, "BAD REQUEST OCCURED\n");
-            chat_message_t* err_msg = create_chat_message(MSG_TYPE::ERROR_MSG);
-            err_msg->error_stat = send_stat;
+            chat_message_t err_msg = create_chat_message(MSG_TYPE::ERROR_MSG);
+            err_msg.error_stat = send_stat;
             
-            list_insert_right(server->incoming_msg, 0, err_msg);
+            server->incoming_msg->insert_head(err_msg);
         }
     }
 } 
 
 void run_sender(client_t* client) {
-    while (ALIVE_STAT(client)) {
-        chat_message_t* msg = NULL;
+    while (status == SENDER_STATUS::ACTIVE) { 
+        chat_message_t msg = {};
 
-        TRY_READ_OUTGOING(client); //block until recieve something
+        client->outgoing_msg->wait(); //block until recieve something
         
         //thread safe
-        LIST_ERR_CODE err_code = list_delete_left(client->outgoing_msg, 0, &msg);
-        if (err_code != LIST_ERR_CODE::SUCCESS)
-            print_err(client->outgoing_msg, err_code, __LINE__, __func__, THREAD_MODE::THREAD_UNSAFE);
-        
-        ERR_STAT send_stat = ERR_STAT::SUCCESS;
-        if (msg) {
-            send_stat = send_message(client, msg);
-            destroy_chat_message(msg); //destroy message after sent
+        msg = client->outgoing_msg->get_head()->data;
+        client->outgoing_msg->delete_head();
+
+        if (msg.msg_type == MSG_TYPE::SENDER_SHUTDOWN) {
+            status = SENDER_STATUS::SHUTDOWN;
+            continue;
         }
 
-        if (send_stat != ERR_STAT::SUCCESS) {
-            chat_message_t* err_msg = create_chat_message(MSG_TYPE::ERROR_MSG);
-            err_msg->error_stat = send_stat;
+        ERR_STAT send_stat = ERR_STAT::SUCCESS;
+        send_stat = send_message(client, &msg);
 
-            list_insert_right(client->incoming_msg, 0, err_msg);
-            RELEASE_INCOMING(client);
+        if (send_stat != ERR_STAT::SUCCESS) {
+            chat_message_t err_msg = create_chat_message(MSG_TYPE::ERROR_MSG);
+            err_msg.error_stat = send_stat;
+
+            client->incoming_msg->insert_head(err_msg);
         }
     }
 
 }
 
 void* start_sender(void* args) {
+    fprintf(stderr, "<<<<<<     Sender Started     >>>>>>\n");
     thread_args* thr_args = (thread_args*)args;
+
+    status = SENDER_STATUS::ACTIVE;
     
     if (thr_args->owner == OWNER::SERVER) {
         server_t* server = (server_t*)thr_args->owner_struct;

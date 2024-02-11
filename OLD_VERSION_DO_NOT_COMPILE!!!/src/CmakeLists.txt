@@ -42,8 +42,6 @@ if ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "GNU")
 endif ()
 
 # ==> add sub modules
-
-add_subdirectory(inc/chat_configs)
 add_subdirectory(inc/messages)
 add_subdirectory(inc/list)
 

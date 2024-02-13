@@ -35,38 +35,49 @@ const int RW_HANDLERS_NUM = 4;
 const read_handler_t read_handlers[] = {
     read_system_msg,
     read_text_msg,
-    read_error_msg,
-    read_broadcast_msg
+    read_broadcast_msg,
+    read_error_msg
 };
 
 const write_handler_t write_handlers[] = {
     write_system_msg,
     write_text_msg,
-    write_error_msg,
-    write_broadcast_msg
+    write_broadcast_msg,
+    write_error_msg
 };
 
 int read_system_msg(chat_message_t* msg, buffer_t* buffer) { 
     ASSERT(buffer);
     assert(msg);
-    assert(msg->type == buffer->type && "msg and buffer different types");
+    assert(msg->msg_type == buffer->type && "msg and buffer different types");
 
     // we start parse from msg_type offset
     size_t position = sizeof(MSG_TYPE);
 
-    strncpy(msg->to, buffer->buf + position, NAME_SIZE);
+    fprintf(stderr, "buffer size: %lu\n", buffer->size);
+    fprintf(stderr, "buffer capacity: %lu\n", buffer->capacity);
+    fprintf(stderr, "position: %lu\n", position);
+
+    print_buffer(buffer, 0);
+
+    memcpy(msg->to, buffer->buf + position, NAME_SIZE);
     position += NAME_SIZE;
 
-    strncpy(msg->from, buffer->buf + position, NAME_SIZE);
+    memcpy(msg->from, buffer->buf + position, NAME_SIZE);
     position += NAME_SIZE;
 
-    strncpy((void*)&msg->sys_command, buffer->buf + position, sizeof(COMMAND));
+    memcpy((char*)&msg->sys_command, buffer->buf + position, sizeof(COMMAND));
     position += sizeof(COMMAND);
 
-    strncpy(msg->msg_body, buffer->buf + position, MSG_SIZE);
+    print_buffer(buffer, position);
+    memcpy(msg->msg_body, buffer->buf + position, MSG_SIZE);
     position += MSG_SIZE;
 
-    assert(position != buffer->size && "msg read overlaping");
+    fprintf(stderr, "buffer size: %lu\n", buffer->size);
+    fprintf(stderr, "buffer capacity: %lu\n", buffer->capacity);
+    fprintf(stderr, "position: %lu\n", position);
+
+    assert(position == buffer->capacity && "msg read overlaping");
     ASSERT(buffer);
 
     return position; 
@@ -75,20 +86,28 @@ int read_system_msg(chat_message_t* msg, buffer_t* buffer) {
 int read_text_msg(chat_message_t* msg, buffer_t* buffer) { 
     ASSERT(buffer);
     assert(msg);
-    assert(msg->type == buffer->type && "msg and buffer different types");
+    assert(msg->msg_type == buffer->type && "msg and buffer different types");
 
     size_t position = sizeof(MSG_TYPE);
 
-    strncpy(msg->to, buffer->buf + position, NAME_SIZE);
+    fprintf(stderr, "buffer size: %lu\n", buffer->size);
+    fprintf(stderr, "buffer capacity: %lu\n", buffer->capacity);
+    fprintf(stderr, "position: %lu\n", position);
+
+    memcpy(msg->to, buffer->buf + position, NAME_SIZE);
     position += NAME_SIZE;
 
-    strncpy(msg->from, buffer->buf + position, NAME_SIZE);
+    memcpy(msg->from, buffer->buf + position, NAME_SIZE);
     position += NAME_SIZE;
 
-    strncpy(msg->msg_body, buffer->buf + position, MSG_SIZE);
+    memcpy(msg->msg_body, buffer->buf + position, MSG_SIZE);
     position += MSG_SIZE;
 
-    assert(position != buffer->size && "msg read overlaping");
+    fprintf(stderr, "buffer size: %lu\n", buffer->size);
+    fprintf(stderr, "buffer capacity: %lu\n", buffer->capacity);
+    fprintf(stderr, "position: %lu\n", position);
+
+    assert(position == buffer->capacity && "msg read overlaping");
     ASSERT(buffer);
 
     return position;
@@ -97,23 +116,23 @@ int read_text_msg(chat_message_t* msg, buffer_t* buffer) {
 int read_error_msg(chat_message_t* msg, buffer_t* buffer) {
     ASSERT(buffer);
     assert(msg);
-    assert(msg->type == buffer->type && "msg and buffer different types");
+    assert(msg->msg_type == buffer->type && "msg and buffer different types");
 
     size_t position = sizeof(MSG_TYPE);
     
-    strncpy(msg->to, buffer->buf + position, NAME_SIZE);
+    memcpy(msg->to, buffer->buf + position, NAME_SIZE);
     position += NAME_SIZE;
 
-    strncpy(msg->from, buffer->buf + position, NAME_SIZE);
+    memcpy(msg->from, buffer->buf + position, NAME_SIZE);
     position += NAME_SIZE;
 
-    strncpy ((char*)&(msg->error_stat), buffer->buf + position, sizeof(ERR_STAT));
+    memcpy ((char*)&(msg->error_stat), buffer->buf + position, sizeof(ERR_STAT));
     position += sizeof(ERR_STAT);
 
-    strncpy(msg->msg_body, buffer + position, MSG_SIZE);
+    memcpy(msg->msg_body, buffer->buf + position, MSG_SIZE);
     position += MSG_SIZE;
 
-    assert(position != buffer->size && "msg read overlaping");
+    assert(position == buffer->capacity && "msg read overlaping");
     ASSERT(buffer);
 
     return position; 
@@ -122,20 +141,20 @@ int read_error_msg(chat_message_t* msg, buffer_t* buffer) {
 int read_broadcast_msg(chat_message_t* msg, buffer_t* buffer) { 
     ASSERT(buffer);
     assert(msg);
-    assert(msg->type == buffer->type && "msg and buffer different types");
+    assert(msg->msg_type == buffer->type && "msg and buffer different types");
 
     size_t position = sizeof(MSG_TYPE);
 
-    strncpy(msg->to, buffer->buf + position, NAME_SIZE);
+    memcpy(msg->to, buffer->buf + position, NAME_SIZE);
     position += NAME_SIZE;
 
-    strncpy(msg->from, buffer->buf + position, NAME_SIZE);
+    memcpy(msg->from, buffer->buf + position, NAME_SIZE);
     position += NAME_SIZE;
 
-    strncpy(msg->msg_body, buffer->buf + position, MSG_SIZE);
+    memcpy(msg->msg_body, buffer->buf + position, MSG_SIZE);
     position += MSG_SIZE;
 
-    assert(position != buffer->size && "msg read overlaping");
+    assert(position == buffer->capacity && "msg read overlaping");
     ASSERT(buffer);
 
     return position; 
@@ -144,9 +163,7 @@ int read_broadcast_msg(chat_message_t* msg, buffer_t* buffer) {
 int write_system_msg(chat_message_t* msg, buffer_t* buffer) { 
     ASSERT(buffer);
     assert(msg);
-    assert(msg->type == buffer->type && "msg and buffer different types");
-
-    fill_body(buffer, (void*)&msg->msg_type, sizeof(MSG_TYPE));
+    assert(msg->msg_type == buffer->type && "msg and buffer different types");
     
     fill_body(buffer, msg->to, NAME_SIZE);
 
@@ -164,9 +181,7 @@ int write_system_msg(chat_message_t* msg, buffer_t* buffer) {
 int write_text_msg(chat_message_t* msg, buffer_t* buffer) { 
     ASSERT(buffer);
     assert(msg);
-    assert(msg->type == buffer->type && "msg and buffer different types");
-
-    fill_body(buffer, (void*)&msg->msg_type, sizeof(MSG_TYPE));
+    assert(msg->msg_type == buffer->type && "msg and buffer different types");
     
     fill_body(buffer, msg->to, NAME_SIZE);
 
@@ -183,9 +198,7 @@ int write_text_msg(chat_message_t* msg, buffer_t* buffer) {
 int write_broadcast_msg(chat_message_t* msg, buffer_t* buffer) { 
     ASSERT(buffer);
     assert(msg);
-    assert(msg->type == buffer->type && "msg and buffer different types");
-
-    fill_body(buffer, (void*)&msg->msg_type, sizeof(MSG_TYPE));
+    assert(msg->msg_type == buffer->type && "msg and buffer different types");
     
     fill_body(buffer, msg->to, NAME_SIZE);
 
@@ -202,9 +215,7 @@ int write_broadcast_msg(chat_message_t* msg, buffer_t* buffer) {
 int write_error_msg(chat_message_t* msg, buffer_t* buffer) {
     ASSERT(buffer);
     assert(msg);
-    assert(msg->type == buffer->type && "msg and buffer different types");
-
-    fill_body(buffer, (void*)&msg->msg_type, sizeof(MSG_TYPE));
+    assert(msg->msg_type == buffer->type && "msg and buffer different types");
     
     fill_body(buffer, msg->to, NAME_SIZE);
 
@@ -298,7 +309,7 @@ void fill_body(buffer_t* buffer, void* source, size_t bytes_size) {
     ASSERT(buffer);
 
     char* source_to_copy = (char*)source;
-    strncpy(buffer->buf + buffer->size, source_to_copy, bytes_size);
+    memcpy(buffer->buf + buffer->size, source_to_copy, bytes_size);
     buffer->size += bytes_size;
 
     ASSERT(buffer);
@@ -310,7 +321,29 @@ MSG_TYPE get_msg_type (const char* msg_buffer) {
 
     MSG_TYPE msg_type;
 
-    strncpy((char*)&msg_type, msg_buffer, sizeof(MSG_TYPE));
+    memcpy((char*)&msg_type, msg_buffer, sizeof(MSG_TYPE));
 
     return msg_type;
 };
+
+void print_buffer(buffer_t* buffer, size_t position) {
+    assert(position < buffer->size);
+
+    for (size_t i = position; i < buffer->size; i ++) {
+        if (buffer->buf[i] == '\0')
+            fprintf (stderr, "_");
+
+        fprintf(stderr, "%c", buffer->buf[i]);
+    }
+    fprintf(stderr, "\n");
+}
+
+void print_msg_body(chat_message_t* msg) {
+    for (size_t i = 0; i < MSG_SIZE; i ++) {
+        if (msg->msg_body[i] == '\0')
+            fprintf (stderr, "_");
+
+        fprintf(stderr, "%c", msg->msg_body[i]);
+    }
+    fprintf(stderr, "\n");
+}

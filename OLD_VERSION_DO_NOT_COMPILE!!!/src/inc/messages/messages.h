@@ -28,6 +28,13 @@ enum class MSG_TYPE : int64_t {
     ERROR_MSG = 3
 };
 
+typedef struct buffer_ {
+    char* buf;
+    MSG_TYPE type;
+    size_t size;
+    size_t capacity;
+} buffer_t;
+
 struct message_; //forward declaration to init fill message handler
 
 typedef int (*read_handler_t)(struct message_*,  buffer_t*);
@@ -48,18 +55,14 @@ typedef struct message_ {
     uv_stream_t* client_endpoint = NULL;
 } chat_message_t;
 
-typedef struct buffer_ {
-    char* buf;
-    MSG_TYPE type;
-    size_t size;
-    size_t capacity;
-} buffer_t;
 
 buffer_t* create_type_buffer(MSG_TYPE type);
 void fill_body(buffer_t* buffer, void* source, size_t bytes_size);
+void print_buffer(buffer_t* buffer, size_t position);
 void destroy_type_buffer(buffer_t* type_buffer);
 
 chat_message_t create_chat_message (MSG_TYPE type);
+void print_msg_body(chat_message_t* msg);
 MSG_TYPE get_msg_type (const char* msg_buffer); 
 
 #endif

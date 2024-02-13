@@ -30,7 +30,9 @@ void async_stop(uv_async_s* async_args) {
 
 void async_send(uv_async_s* async_args) {
     uv_write_t*  write_req = (uv_write_t*)async_args->next_closing;
-    uv_stream_t* write_endpoint = *(uv_stream_t**)async_args->data;
+    uv_stream_t* write_endpoint;
+    memcpy(&write_endpoint, async_args->data, sizeof(uv_stream_t*));
+
     size_t offset = sizeof(uv_stream_t*);
 
     // CALLOC here == memory leak
@@ -38,12 +40,13 @@ void async_send(uv_async_s* async_args) {
     // write_req -> bufs || bufsml are internal stuff and are not for userspace usage
     char msg_body[MSG_SIZE];
     memcpy(msg_body, (char*)async_args->data + offset, MSG_SIZE);
-    bzero(async_args->data, offset + MSG_SIZE); 
+    FREE(async_args->data);
 
     uv_buf_t bufs = {};
     bufs.base = msg_body;
     bufs.len = MSG_SIZE;
 
+    fprintf(stderr, "write endpoint before write: %p\n", write_endpoint);
     int write_stat = uv_write(write_req, write_endpoint, &bufs, 1, on_write);
 
     // When write stat < 0, request hasn't been put in event queue, so on_write() never been called!
@@ -53,20 +56,32 @@ void async_send(uv_async_s* async_args) {
         uv_close((uv_handle_t*)write_req->send_handle, on_close_connection);
         FREE (write_req)
     }
+
+    fprintf(stderr, "Msg Write Success\n");
 }
 
 void async_close(uv_async_s* async_args) {
     uv_close(async_args->next_closing, on_close_connection);
 }
 
+
+//PROBLEM uv_async_t.data is not inited! = NULL!!!
 void call_async_write(uv_stream_t* write_dest, buffer_t* buf_to_write) {
     uv_write_t* write_req = CALLOC(1, uv_write_t);
     async_send_message.next_closing = (uv_handle_t*)write_req;
-    
-    memcpy(async_send_message.data, write_dest, sizeof(uv_write_t*));
-    size_t offset = sizeof(uv_write_t*);
 
-    memcpy((char*)async_send_message.data + offset, buf_to_write + offset, MSG_SIZE);
+    fprintf(stderr, "write endpoint before async send: %p\n", write_dest);
+
+    async_send_message.data = CALLOC(sizeof(uv_stream_t*) + buf_to_write->capacity, char);
+    
+    memcpy(async_send_message.data, &write_dest, sizeof(uv_stream_t*));
+    size_t offset = sizeof(uv_stream_t*);
+
+    fprintf(stderr, "Seg fault here\n");
+
+    memcpy((char*)async_send_message.data + offset, buf_to_write->buf, buf_to_write->size);
+
+    fprintf(stderr, "No Seg fault here\n");
 
     uv_async_send(&async_send_message);
 }
@@ -103,7 +118,8 @@ void on_close_connection(uv_handle_t* close_handle) {
     uv_read_stop((uv_stream_t*)close_handle);
     FREE(close_handle);
 
-    chat_message_t close_confirm_msg = create_chat_message(MSG_TYPE::ON_CLOSE);
+    chat_message_t close_confirm_msg = create_chat_message(MSG_TYPE::SYSTEM);
+    close_confirm_msg.sys_command = COMMAND::ON_CLOSE;
 
     if (connection->owner == OWNER::SERVER)
         connection->server->incoming_msg->insert_head(close_confirm_msg);
@@ -115,22 +131,30 @@ void on_close_connection(uv_handle_t* close_handle) {
 
 void on_read(uv_stream_t* endpoint, ssize_t nread, const uv_buf_t* buf) {
     if (nread > 0) {
-        while (nread > 0) {
-            MSG_TYPE   msg_type = get_msg_type(buf->base);
-            chat_message_t msg = create_chat_message(msg_type);
+        MSG_TYPE   msg_type = get_msg_type(buf->base);
+        chat_message_t msg = create_chat_message(msg_type);
 
-            int read_size = (msg.read_message)(&msg, buf->base);
-            msg.client_endpoint = endpoint;
+        buffer_t* buffer = create_type_buffer(msg_type); 
+        buffer->buf  = buf->base;
+        buffer->size = buffer->capacity;
 
-            if (connection->owner == OWNER::CLIENT) {
-                connection->client->incoming_msg->insert_head(msg);
-            }
-            else {
-                connection->server->incoming_msg->insert_head(msg);
-            }
+        fprintf(stderr, "%lu msg type recieved!\n", msg_type);
+        fprintf(stderr, "recieved %lu bytes\n", buf->len);
+        fprintf(stderr, "buffer capacity %lu\n", buffer->capacity);
 
-            nread -= (read_size + sizeof(MSG_TYPE));
+        size_t read_size = (msg.read_message)(&msg, buffer);
+        msg.client_endpoint = endpoint;
+
+        if (connection->owner == OWNER::CLIENT) {
+            connection->client->incoming_msg->insert_head(msg);
         }
+        else {
+            connection->server->incoming_msg->insert_head(msg);
+        }
+
+        destroy_type_buffer(buffer);
+
+        fprintf(stderr, "num read %lu\n", nread);
     }
     else if (nread < 0) { //error happend on connection, tear up connection
         fprintf(stderr, "<<<<<<     Error while reading     >>>>>>\n");
@@ -154,6 +178,8 @@ void on_write(uv_write_t* write_handle, int status) {
 
         uv_close((uv_handle_t*)write_handle->send_handle, on_close_connection);
     }
+
+    fprintf(stderr, "Data was written to socket\n");
 
     // from libuv src code
     // if (req->error == 0) {

@@ -1,16 +1,20 @@
 #include "chat_base.h"
 #include "chat_configs.h"
 #include "uv.h"
+#include <assert.h>
 
 
-uint64_t hash_djb2(unsigned char *str) //Dan Bernstein hash//
+uint64_t hash_djb2(const char sample[]) //Dan Bernstein hash//
 {
+    fprintf(stderr, "%s\n", sample);
     uint64_t hash = 5381;
-    char c = *str;
+    char c = *sample;
 
     while (c) {
         hash = ((hash << 5) + hash) + (int)c; /* hash * 33 + c */
-        c = *(++str);
+        c = *(++sample);
+
+        fprintf(stderr, "counting...\n");
     }
     
     return hash;
@@ -54,26 +58,26 @@ void change_status(base_client_t* client) {
     return;
 }
 
-int look_up_client(chat_base_t* base, uint64_t name_hash) {
-    for (size_t i = 0; i < base->size; i ++) {
-        if (base->base[i].name_hash == name_hash)
-            return i;
-    }
-
-    return -1; 
-}
-
 base_client_t* registr_client(chat_base_t* base, uv_stream_t* endpoint, const char* log_in_buf) {
     char usr_name[NAME_SIZE] = {0};
     char password[PSWD_SIZE] = {0};
 
     strncpy(usr_name, log_in_buf,  NAME_SIZE);
-    strncpy(password, log_in_buf + NAME_SIZE, NAME_SIZE);
+    strncpy(password, log_in_buf + NAME_SIZE, PSWD_SIZE);
 
-    uint64_t name_hash = base->hash_client(*(unsigned char**)&usr_name);
-    uint64_t pswd_hash = base->hash_client(*(unsigned char**)&password);
+    fprintf(stderr, "REGISTERING ...\n");
+    fprintf(stderr, "name [%s]\n", usr_name);
+    fprintf(stderr, "usr_pswd [%s]\n", password);
+    fprintf(stderr, "hash f address: %p\n", base->hash_client);
 
-    base_client_t* client = get_client(base, name_hash);
+    uint64_t name_hash = base->hash_client(usr_name);
+    uint64_t pswd_hash = base->hash_client(password);
+
+    fprintf(stderr, "segfault1\n");
+
+    base_client_t* client = get_client(base, usr_name);
+
+    fprintf(stderr, "segfault2\n");
 
     //if client allready exists with this name
     if (client)
@@ -88,11 +92,13 @@ base_client_t* registr_client(chat_base_t* base, uv_stream_t* endpoint, const ch
     new_client.client_stream = endpoint;
     new_client.name_hash = name_hash;
     new_client.pswd_hash = pswd_hash;
+    strncpy(new_client.name, usr_name, NAME_SIZE);
 
+    base_client_t* new_client_addr = base->base + base->size;
     base->base[base->size] = new_client;
     base->size ++;
 
-    return client;
+    return new_client_addr;
 }
 
 //when log in or log out: log_in_buf, log_out_buf contain only pswd and name hashes
@@ -101,12 +107,11 @@ base_client_t* log_in_client(chat_base_t* base, const char* log_in_buf) {
     char password[PSWD_SIZE] = {0};
 
     strncpy(usr_name, log_in_buf,  NAME_SIZE);
-    strncpy(password, log_in_buf + NAME_SIZE, NAME_SIZE);
+    strncpy(password, log_in_buf + NAME_SIZE, PSWD_SIZE);
 
-    uint64_t name_hash = base->hash_client(*(unsigned char**)&usr_name);
-    uint64_t pswd_hash = base->hash_client(*(unsigned char**)&password);
+    uint64_t pswd_hash = base->hash_client(password);
 
-    base_client_t* client = get_client(base, name_hash);
+    base_client_t* client = get_client(base, usr_name);
 
     //client found
     if (client) {
@@ -126,8 +131,7 @@ base_client_t* log_out_client(chat_base_t* base, const char* log_out_buf) {
 
     strncpy(usr_name, log_out_buf, NAME_SIZE);
 
-    uint64_t name_hash = base->hash_client(*(unsigned char**)&usr_name);
-    base_client_t* client = get_client(base, name_hash);
+    base_client_t* client = get_client(base, usr_name);
 
     //client found
     if (client)
@@ -137,14 +141,76 @@ base_client_t* log_out_client(chat_base_t* base, const char* log_out_buf) {
     return NULL;
 }
 
-//TO DO:   
-int look_up_client(chat_base_t* base, uv_stream_t* endpoint) {
-    return 0;
-};
+// //TO DO:   
+// int look_up_client(chat_base_t* base, uv_stream_t* endpoint) {
+//     assert(base);
+//     assert(endpoint);
+
+//     for (size_t i = 0; i < base->size; i ++) {
+//         if (endpoint == base->base[i].client_stream)
+//             return 1;
+//     }
+
+//     return -1;
+// };
+
+// int look_up_client(chat_base_t* base, char* name) {
+//     assert(base);
+//     assert(name);
+
+//     uint64_t name_hash = base->hash_client(name);
+
+//     for (size_t i = 0; i < base->size; i ++) {
+//         if (name_hash == base->base[i].name_hash)
+//             return i;
+//     }
+    
+//     return -1;
+// };
+
+// int look_up_client(chat_base_t* base, uint64_t name_hash) {
+//     assert(base);
+
+//     for (size_t i = 0; i < base->size; i ++) {
+//         if (name_hash == base->base[i].name_hash)
+//             return i;
+//     }
+    
+//     return -1;
+// };
 
 base_client_t* get_client(chat_base_t* base, uint64_t name_hash) {
+    assert(base);
+
+    for (size_t i = 0; i < base->size; i ++) {
+        if (name_hash == base->base[i].name_hash)
+            return base->base + i;
+    }
+
+    return NULL;
+};
+
+base_client_t* get_client(chat_base_t* base, char* name) {
+    assert(base);
+    assert(name);
+
+    uint64_t name_hash = base->hash_client(name);
+
+    for (size_t i = 0; i < base->size; i ++) {
+        if (name_hash == base->base[i].name_hash)
+            return base->base + i;
+    }
+
     return NULL;
 };
 base_client_t* get_client(chat_base_t* base, uv_stream_t* endpoint) {
+    assert(base);
+    assert(endpoint);
+
+    for (size_t i = 0; i < base->size; i ++) {
+        if (endpoint == base->base[i].client_stream)
+            return base->base + i;
+    }
+
     return NULL;
 };

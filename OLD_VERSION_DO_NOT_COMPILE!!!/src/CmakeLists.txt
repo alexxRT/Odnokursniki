@@ -50,8 +50,8 @@ add_subdirectory(inc/list)
 add_executable(server server.cpp src/server.cpp src/chat_base.cpp src/networking.cpp src/sender.cpp)
 add_executable(client client.cpp src/client.cpp src/chat_base.cpp src/networking.cpp src/sender.cpp)
 
-target_link_libraries(server      PUBLIC ${LIBUV_LIBRARY} chat_msg list configs)
+target_link_libraries(server      PUBLIC ${LIBUV_LIBRARY} chat_msg list)
 target_include_directories(server PUBLIC ${LIBUV_INCLUDE} ${CMAKE_CURRENT_SOURCE_DIR}/inc)
 
-target_link_libraries(client      PUBLIC ${LIBUV_LIBRARY} chat_msg list configs)
+target_link_libraries(client      PUBLIC ${LIBUV_LIBRARY} chat_msg list)
 target_include_directories(client PUBLIC ${LIBUV_INCLUDE} ${CMAKE_CURRENT_SOURCE_DIR}/inc)

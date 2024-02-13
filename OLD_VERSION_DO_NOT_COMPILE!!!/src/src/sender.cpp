@@ -15,8 +15,8 @@ SENDER_STATUS status = SENDER_STATUS::SHUTDOWN;
 ERR_STAT send_message(server_t* server, chat_message_t* msg) {
     base_client_t* client = get_client(server->client_base, msg->to);
     if (client) {
-        buffer_t* buf = create_buffer(msg->msg_type);
-        msg->write_message(msg, buf->buf);
+        buffer_t* buf = create_type_buffer(msg->msg_type);
+        msg->write_message(msg, buf);
 
         call_async_write(client->client_stream, buf);
         destroy_type_buffer(buf);
@@ -29,12 +29,14 @@ ERR_STAT send_message(server_t* server, chat_message_t* msg) {
 
 
 ERR_STAT send_message(client_t* client, chat_message_t* msg) {
-    buffer_t* buf = create_buffer(msg->msg_type);
-    msg->write_message(msg, buf->buf);
+    buffer_t* buf = create_type_buffer(msg->msg_type);
+    msg->write_message(msg, buf);
 
+    fprintf(stderr, "dest: %p\n", client->server_dest);
     call_async_write(client->server_dest, buf);
     destroy_type_buffer(buf);
 
+    fprintf(stderr, "seg fault\n");
     return ERR_STAT::SUCCESS;
 }
 
@@ -49,7 +51,7 @@ void run_sender(server_t* server) {
         msg = server->outgoing_msg->get_head()->data;
         server->outgoing_msg->delete_head();
 
-        if (msg.msg_type == MSG_TYPE::SENDER_SHUTDOWN) {
+        if (msg.sys_command == COMMAND::SHUTDOWN_SEND) {
             status = SENDER_STATUS::SHUTDOWN;
             continue;
         }
@@ -57,12 +59,15 @@ void run_sender(server_t* server) {
         ERR_STAT send_stat = ERR_STAT::SUCCESS;
         send_stat = send_message(server, &msg);
 
+        fprintf(stderr, "Send Stat: %lu\n", send_stat);
+
         if (send_stat != ERR_STAT::SUCCESS) {
             chat_message_t err_msg = create_chat_message(MSG_TYPE::ERROR_MSG);
             err_msg.error_stat = send_stat;
             
             server->incoming_msg->insert_head(err_msg);
         }
+        fprintf(stderr, "Message Sent!\n");
     }
 } 
 
@@ -76,7 +81,7 @@ void run_sender(client_t* client) {
         msg = client->outgoing_msg->get_head()->data;
         client->outgoing_msg->delete_head();
 
-        if (msg.msg_type == MSG_TYPE::SENDER_SHUTDOWN) {
+        if (msg.sys_command == COMMAND::SHUTDOWN_SEND) {
             status = SENDER_STATUS::SHUTDOWN;
             continue;
         }
@@ -84,12 +89,15 @@ void run_sender(client_t* client) {
         ERR_STAT send_stat = ERR_STAT::SUCCESS;
         send_stat = send_message(client, &msg);
 
+        fprintf(stderr, "Send Stat: %lu\n", send_stat);
+
         if (send_stat != ERR_STAT::SUCCESS) {
             chat_message_t err_msg = create_chat_message(MSG_TYPE::ERROR_MSG);
             err_msg.error_stat = send_stat;
 
             client->incoming_msg->insert_head(err_msg);
         }
+        fprintf(stderr, "Message Sent!");
     }
 
 }

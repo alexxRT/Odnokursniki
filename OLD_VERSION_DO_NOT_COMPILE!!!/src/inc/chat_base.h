@@ -8,7 +8,7 @@
 
 const int BASE_SIZE = 100;
 
-typedef uint64_t (*hash_base_t)(unsigned char* str);
+typedef uint64_t (*hash_base_t)(const char[]);
 
 typedef struct base_client_ {
     uv_stream_t* client_stream;
@@ -46,7 +46,9 @@ int look_up_client(chat_base_t* base, uint64_t name_hash);
 
 // TO DO://
 int look_up_client(chat_base_t* base, uv_stream_t* endpoint);
-base_client_t* get_client(chat_base_t* base, uint64_t name_hash);
+int look_up_client(chat_base_t* base, char* name);
+
+base_client_t* get_client(chat_base_t* base, char* name);
 base_client_t* get_client(chat_base_t* base, uv_stream_t* endpoint);
 // --------- //
 

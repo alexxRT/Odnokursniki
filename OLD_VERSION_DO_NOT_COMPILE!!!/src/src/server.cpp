@@ -35,31 +35,6 @@
 
 //-------------------------------------------------------------------------------------------------------//
 
-CMD_CODE get_command (char cmd_body[]) {
-    size_t offset = sizeof(MSG_TYPE) + NAME_SIZE;
-
-    if (!strncmp(cmd_body + offset, "in$", IN_SIZE)) {
-        return CMD_CODE::LOG_IN;
-    }
-
-    if(!strncmp(cmd_body + offset, "online$", ONLINE_SIZE)) {
-        return CMD_CODE::ONLINE;
-    }
-
-    if (!strncmp(cmd_body + offset, "out$", OUT_SIZE)) {
-        return CMD_CODE::LOG_OUT;
-    }
-
-    if (!strncmp(cmd_body + offset, "reg$", REG_SIZE)) {
-        return CMD_CODE::REGISTR;
-    }
-
-    if (!strncmp(cmd_body + offset, "chstat$", STAT_SIZE)) {
-        return CMD_CODE::CHANGED_STAT;
-    }
-
-    return CMD_CODE::UNKNOWN;
-}
 
 void fill_err_stat(ERR_STAT err_code, buffer_t* buf) {
 
@@ -115,54 +90,58 @@ void destroy_server(server_t* server) {
 //---------------------------------------------INTERFACE---------------------------------------------//
 
 void send_all_status_changed(server_t* server, base_client_t* client) {
-    assert(client != NULL);
+    assert(client);
+    assert(server);
 
-    buffer_t* buf = create_buffer(MSG_TYPE::SYSTEM);
-    fill_server_message_buffer(buf, 0, CMD_CODE::CHANGED_STAT);
-
-    fill_body(buf, (void*)client->name, NAME_SIZE);
+    char server_name[NAME_SIZE] = {0};
 
     for (int i = 0; i < server->client_base->size; i ++) {
-        base_client_t* client = server->client_base->base + i;
+        base_client_t* client_recv = server->client_base->base + i;
 
-        if (client->status == STATUS::ONLINE) {
+        if (client_recv->status == STATUS::ONLINE) {
             chat_message_t msg = create_chat_message(MSG_TYPE::SYSTEM);
-            msg.to = client->name_hash;
-            msg.read_message(&msg, buf->buf);
+            msg.sys_command = COMMAND::ONLINE;
+
+            strncpy(msg.to, client_recv->name, NAME_SIZE);
+            strncpy(msg.from, server_name, NAME_SIZE);
+            strncpy(msg.msg_body, client->name, NAME_SIZE);
 
             server->outgoing_msg->insert_head(msg);
         }
     }
-    destroy_type_buffer(buf);
 }
 
 void send_online_list(server_t* server, base_client_t* client) {
-    assert(client != NULL);
+    assert(client);
+    assert(server);
 
-    buffer_t* buf = create_buffer(MSG_TYPE::SYSTEM);
-    fill_server_message_buffer(buf, 0, CMD_CODE::ONLINE);
-
-    for (int i = 0; i < server->client_base->size; i ++) {
-        base_client_t* client = server->client_base->base + i;
-        if (client->status == STATUS::ONLINE)
-            fill_body(buf, (void*)client->name, NAME_SIZE);
-    }
+    char server_name[NAME_SIZE] = {0};
 
     chat_message_t msg = create_chat_message(MSG_TYPE::SYSTEM);
-    msg.to = client->name_hash;
-    msg.read_message(&msg, buf->buf);
+    msg.sys_command = COMMAND::ONLINE;
+
+    strncpy(msg.to, client->name, NAME_SIZE);
+    strncpy(msg.from, server_name, NAME_SIZE);
+
+    for (int i = 0; i < server->client_base->size; i ++) {
+        base_client_t* client_stored = server->client_base->base + i;
+        size_t position = 0;
+
+        if (client->status == STATUS::ONLINE) {
+            strncpy(msg.msg_body + position, client_stored->name, NAME_SIZE);
+            position += NAME_SIZE;
+        }
+    }
 
     server->outgoing_msg->insert_head(msg);
-
-    destroy_type_buffer(buf);
 }
 
-ERR_STAT operate_command(server_t* server, CMD_CODE code, chat_message_t* msg) {
+ERR_STAT operate_command(server_t* server, COMMAND code, chat_message_t* msg) {
     assert(msg != NULL);
 
     switch(code) {
-        case CMD_CODE::LOG_IN: {
-            base_client_t* client = log_in_client(server->client_base, msg->msg_body + IN_SIZE);
+        case COMMAND::LOG_IN: {
+            base_client_t* client = log_in_client(server->client_base, msg->msg_body);
 
             if (client) {
                 send_all_status_changed(server, client);
@@ -178,8 +157,8 @@ ERR_STAT operate_command(server_t* server, CMD_CODE code, chat_message_t* msg) {
         }
         break;
 
-        case CMD_CODE::LOG_OUT: {
-            base_client_t* client = log_out_client(server->client_base, msg->msg_body + OUT_SIZE);
+        case COMMAND::LOG_OUT: {
+            base_client_t* client = log_out_client(server->client_base, msg->msg_body);
 
             if (client) {
                 change_status(client);
@@ -196,8 +175,8 @@ ERR_STAT operate_command(server_t* server, CMD_CODE code, chat_message_t* msg) {
         }
         break;
 
-        case CMD_CODE::REGISTR: {
-            base_client_t* client = registr_client(server->client_base, msg->client_endpoint, msg->msg_body + REG_SIZE);
+        case COMMAND::REGISTR: {
+            base_client_t* client = registr_client(server->client_base, msg->client_endpoint, msg->msg_body);
 
             if (client) {
                 send_all_status_changed(server, client);
@@ -213,10 +192,16 @@ ERR_STAT operate_command(server_t* server, CMD_CODE code, chat_message_t* msg) {
         }
         break;
 
-        case CMD_CODE::ONLINE: {
+        case COMMAND::ONLINE: {
             base_client_t* client = get_client(server->client_base, msg->client_endpoint);
             send_online_list(server, client);
             fprintf(stderr, "Online list sent\n");
+        }
+        break;
+
+        case COMMAND::ON_CLOSE: {
+            fprintf (stderr, "Connection closed. Confirmed!\n");
+            return ERR_STAT::SUCCESS;
         }
         break;
 
@@ -237,8 +222,7 @@ ERR_STAT operate_request(server_t* server, chat_message_t* msg) {
         break;
 
         case MSG_TYPE::SYSTEM: {
-            CMD_CODE code     = get_command(msg->msg_body);
-            ERR_STAT cmd_stat = operate_command(server, code, msg);
+            ERR_STAT cmd_stat = operate_command(server, msg->sys_command, msg);
 
             if (cmd_stat != ERR_STAT::SUCCESS)
                 return cmd_stat;
@@ -263,11 +247,6 @@ ERR_STAT operate_request(server_t* server, chat_message_t* msg) {
             }
             else 
                 fprintf(stderr, "Unexpected error code %d\n", err_code);
-        }
-        break;
-
-        case MSG_TYPE::ON_CLOSE: {
-            fprintf (stderr, "Connection closed. Confirmed!\n");
         }
         break;
 
@@ -313,7 +292,7 @@ int close_all_active_connections(server_t* server) {
         chat_message_t msg = server->incoming_msg->get_head()->data;
         server->incoming_msg->delete_head();
 
-        if (msg.msg_type == MSG_TYPE::ON_CLOSE)
+        if (msg.sys_command == COMMAND::ON_CLOSE)
             closing_confirms ++;
 
         fprintf(stderr, "\rConnection close [%lu/%lu]", closing_confirms, closing_req);
@@ -331,25 +310,29 @@ void* start_interface(void* args) {
     thread_args* thr_args = (thread_args*)args;
     server_t* server = (server_t*)(thr_args->owner_struct);
 
+    char server_name[NAME_SIZE] = {0};
+
     while (server->status == SERVER_STATUS::UP) {
         //block until smth will apear to read ---> avoid useless "while" looping
         server->incoming_msg->wait();
 
-        
         chat_message_t msg = server->incoming_msg->get_head()->data;
         server->incoming_msg->delete_head();
+
+        fprintf (stderr, "Message Recived!!!\n");
 
         ERR_STAT request_stat = operate_request(server, &msg);
 
         if (request_stat != ERR_STAT::SUCCESS) {
             fprintf (stderr, "Bad Result On Request Operation\n");
+            chat_message_t err_msg = create_chat_message(MSG_TYPE::ERROR_MSG);
+            err_msg.error_stat = request_stat;
 
-            // if message was recieved from client, reply bad request.
-            if (msg.from != 0){
-                chat_message_t err_msg = create_chat_message(MSG_TYPE::ERROR_MSG);
-                err_msg.error_stat     = request_stat;
-                err_msg.to             = err_msg.from;
-            
+            //outside error message
+            if (strncmp(server_name, msg.from, NAME_SIZE)) {
+                strncpy(err_msg.to, msg.from, NAME_SIZE);
+                strncpy(err_msg.from, server_name, NAME_SIZE);
+
                 server->outgoing_msg->insert_head(err_msg);
             }
         }

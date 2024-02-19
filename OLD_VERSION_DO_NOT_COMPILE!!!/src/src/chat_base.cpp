@@ -6,15 +6,12 @@
 
 uint64_t hash_djb2(const char sample[]) //Dan Bernstein hash//
 {
-    fprintf(stderr, "%s\n", sample);
     uint64_t hash = 5381;
     char c = *sample;
 
     while (c) {
         hash = ((hash << 5) + hash) + (int)c; /* hash * 33 + c */
         c = *(++sample);
-
-        fprintf(stderr, "counting...\n");
     }
     
     return hash;
@@ -65,19 +62,11 @@ base_client_t* registr_client(chat_base_t* base, uv_stream_t* endpoint, const ch
     strncpy(usr_name, log_in_buf,  NAME_SIZE);
     strncpy(password, log_in_buf + NAME_SIZE, PSWD_SIZE);
 
-    fprintf(stderr, "REGISTERING ...\n");
+    // fprintf(stderr, "REGISTERING ...\n");
     fprintf(stderr, "name [%s]\n", usr_name);
     fprintf(stderr, "usr_pswd [%s]\n", password);
-    fprintf(stderr, "hash f address: %p\n", base->hash_client);
-
-    uint64_t name_hash = base->hash_client(usr_name);
-    uint64_t pswd_hash = base->hash_client(password);
-
-    fprintf(stderr, "segfault1\n");
 
     base_client_t* client = get_client(base, usr_name);
-
-    fprintf(stderr, "segfault2\n");
 
     //if client allready exists with this name
     if (client)
@@ -90,8 +79,12 @@ base_client_t* registr_client(chat_base_t* base, uv_stream_t* endpoint, const ch
     //add new user
     base_client_t new_client = {};
     new_client.client_stream = endpoint;
+
+    uint64_t name_hash = base->hash_client(usr_name);
+    uint64_t pswd_hash = base->hash_client(password);
     new_client.name_hash = name_hash;
     new_client.pswd_hash = pswd_hash;
+    
     strncpy(new_client.name, usr_name, NAME_SIZE);
 
     base_client_t* new_client_addr = base->base + base->size;

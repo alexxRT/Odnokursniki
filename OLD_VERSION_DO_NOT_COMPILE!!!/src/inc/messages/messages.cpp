@@ -54,11 +54,11 @@ int read_system_msg(chat_message_t* msg, buffer_t* buffer) {
     // we start parse from msg_type offset
     size_t position = sizeof(MSG_TYPE);
 
-    fprintf(stderr, "buffer size: %lu\n", buffer->size);
-    fprintf(stderr, "buffer capacity: %lu\n", buffer->capacity);
-    fprintf(stderr, "position: %lu\n", position);
+    // fprintf(stderr, "buffer size: %lu\n", buffer->size);
+    // fprintf(stderr, "buffer capacity: %lu\n", buffer->capacity);
+    // fprintf(stderr, "position: %lu\n", position);
 
-    print_buffer(buffer, 0);
+    // print_buffer(buffer, 0);
 
     memcpy(msg->to, buffer->buf + position, NAME_SIZE);
     position += NAME_SIZE;
@@ -69,13 +69,13 @@ int read_system_msg(chat_message_t* msg, buffer_t* buffer) {
     memcpy((char*)&msg->sys_command, buffer->buf + position, sizeof(COMMAND));
     position += sizeof(COMMAND);
 
-    print_buffer(buffer, position);
+    // print_buffer(buffer, position);
     memcpy(msg->msg_body, buffer->buf + position, MSG_SIZE);
     position += MSG_SIZE;
 
-    fprintf(stderr, "buffer size: %lu\n", buffer->size);
-    fprintf(stderr, "buffer capacity: %lu\n", buffer->capacity);
-    fprintf(stderr, "position: %lu\n", position);
+    // fprintf(stderr, "buffer size: %lu\n", buffer->size);
+    // fprintf(stderr, "buffer capacity: %lu\n", buffer->capacity);
+    // fprintf(stderr, "position: %lu\n", position);
 
     assert(position == buffer->capacity && "msg read overlaping");
     ASSERT(buffer);
@@ -90,9 +90,9 @@ int read_text_msg(chat_message_t* msg, buffer_t* buffer) {
 
     size_t position = sizeof(MSG_TYPE);
 
-    fprintf(stderr, "buffer size: %lu\n", buffer->size);
-    fprintf(stderr, "buffer capacity: %lu\n", buffer->capacity);
-    fprintf(stderr, "position: %lu\n", position);
+    // fprintf(stderr, "buffer size: %lu\n", buffer->size);
+    // fprintf(stderr, "buffer capacity: %lu\n", buffer->capacity);
+    // fprintf(stderr, "position: %lu\n", position);
 
     memcpy(msg->to, buffer->buf + position, NAME_SIZE);
     position += NAME_SIZE;
@@ -103,9 +103,9 @@ int read_text_msg(chat_message_t* msg, buffer_t* buffer) {
     memcpy(msg->msg_body, buffer->buf + position, MSG_SIZE);
     position += MSG_SIZE;
 
-    fprintf(stderr, "buffer size: %lu\n", buffer->size);
-    fprintf(stderr, "buffer capacity: %lu\n", buffer->capacity);
-    fprintf(stderr, "position: %lu\n", position);
+    // fprintf(stderr, "buffer size: %lu\n", buffer->size);
+    // fprintf(stderr, "buffer capacity: %lu\n", buffer->capacity);
+    // fprintf(stderr, "position: %lu\n", position);
 
     assert(position == buffer->capacity && "msg read overlaping");
     ASSERT(buffer);

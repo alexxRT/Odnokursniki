@@ -7,6 +7,17 @@
 
 static connect_t* connection = NULL;
 
+typedef struct write_req {
+    uv_write_t   uv_write_handle;
+    uv_buf_t     buf;
+    uv_stream_t* endpoint;
+} write_req_t;
+
+void free_write_req(write_req_t* wr) {
+    FREE(wr->buf.base);
+    FREE(wr);
+}
+
 void create_connection(OWNER owner) {
     connection = CALLOC(1, connect_t);
     connection -> owner = owner;
@@ -29,32 +40,18 @@ void async_stop(uv_async_s* async_args) {
 }
 
 void async_send(uv_async_s* async_args) {
-    uv_write_t*  write_req = (uv_write_t*)async_args->next_closing;
-    uv_stream_t* write_endpoint;
-    memcpy(&write_endpoint, async_args->data, sizeof(uv_stream_t*));
+    write_req_t*  write_req = (write_req_t*)async_args->next_closing;
+    uv_stream_t*  write_endpoint = write_req->endpoint;
 
-    size_t offset = sizeof(uv_stream_t*);
-
-    // CALLOC here == memory leak
-    // libuv does need to have valid bufs until on_write() will be called
-    // write_req -> bufs || bufsml are internal stuff and are not for userspace usage
-    char msg_body[MSG_SIZE];
-    memcpy(msg_body, (char*)async_args->data + offset, MSG_SIZE);
-    FREE(async_args->data);
-
-    uv_buf_t bufs = {};
-    bufs.base = msg_body;
-    bufs.len = MSG_SIZE;
-
-    fprintf(stderr, "write endpoint before write: %p\n", write_endpoint);
-    int write_stat = uv_write(write_req, write_endpoint, &bufs, 1, on_write);
+    //fprintf(stderr, "write endpoint before write: %p\n", write_endpoint);
+    int write_stat = uv_write((uv_write_t*)write_req, write_endpoint, &write_req->buf, 1, on_write);
 
     // When write stat < 0, request hasn't been put in event queue, so on_write() never been called!
     if (write_stat < 0) {
         fprintf(stderr, "Error while initing writing request\n");
 
-        uv_close((uv_handle_t*)write_req->send_handle, on_close_connection);
-        FREE (write_req)
+        uv_close((uv_handle_t*)write_endpoint, on_close_connection);
+        free_write_req(write_req);
     }
 
     fprintf(stderr, "Msg Write Success\n");
@@ -65,23 +62,15 @@ void async_close(uv_async_s* async_args) {
 }
 
 
-//PROBLEM uv_async_t.data is not inited! = NULL!!!
 void call_async_write(uv_stream_t* write_dest, buffer_t* buf_to_write) {
-    uv_write_t* write_req = CALLOC(1, uv_write_t);
+    write_req_t* write_req = CALLOC(1, write_req_t);
+
+    write_req->buf = uv_buf_init(CALLOC(buf_to_write->capacity, char), buf_to_write->capacity);
+    memcpy(write_req->buf.base, buf_to_write->buf, buf_to_write->capacity);
+
+    write_req->endpoint = write_dest;
+
     async_send_message.next_closing = (uv_handle_t*)write_req;
-
-    fprintf(stderr, "write endpoint before async send: %p\n", write_dest);
-
-    async_send_message.data = CALLOC(sizeof(uv_stream_t*) + buf_to_write->capacity, char);
-    
-    memcpy(async_send_message.data, &write_dest, sizeof(uv_stream_t*));
-    size_t offset = sizeof(uv_stream_t*);
-
-    fprintf(stderr, "Seg fault here\n");
-
-    memcpy((char*)async_send_message.data + offset, buf_to_write->buf, buf_to_write->size);
-
-    fprintf(stderr, "No Seg fault here\n");
 
     uv_async_send(&async_send_message);
 }
@@ -138,9 +127,9 @@ void on_read(uv_stream_t* endpoint, ssize_t nread, const uv_buf_t* buf) {
         buffer->buf  = buf->base;
         buffer->size = buffer->capacity;
 
-        fprintf(stderr, "%lu msg type recieved!\n", msg_type);
-        fprintf(stderr, "recieved %lu bytes\n", buf->len);
-        fprintf(stderr, "buffer capacity %lu\n", buffer->capacity);
+        // fprintf(stderr, "%lu msg type recieved!\n", msg_type);
+        // fprintf(stderr, "recieved %lu bytes\n", buf->len);
+        // fprintf(stderr, "buffer capacity %lu\n", buffer->capacity);
 
         size_t read_size = (msg.read_message)(&msg, buffer);
         msg.client_endpoint = endpoint;
@@ -154,7 +143,7 @@ void on_read(uv_stream_t* endpoint, ssize_t nread, const uv_buf_t* buf) {
 
         destroy_type_buffer(buffer);
 
-        fprintf(stderr, "num read %lu\n", nread);
+        fprintf(stderr, "Num bytes read from socket %lu\n", nread);
     }
     else if (nread < 0) { //error happend on connection, tear up connection
         fprintf(stderr, "<<<<<<     Error while reading     >>>>>>\n");
@@ -179,8 +168,6 @@ void on_write(uv_write_t* write_handle, int status) {
         uv_close((uv_handle_t*)write_handle->send_handle, on_close_connection);
     }
 
-    fprintf(stderr, "Data was written to socket\n");
-
     // from libuv src code
     // if (req->error == 0) {
     //     if (req->bufs != req->bufsml)
@@ -193,22 +180,22 @@ void on_write(uv_write_t* write_handle, int status) {
     //     req->bufs = malloc(nbufs * sizeof(bufs[0]));
     // So NO FREE() can be performed on bufs!!!
 
-    FREE(write_handle);
+    free_write_req((write_req_t*)write_handle);
+
+    //fprintf(stderr, "on_write() was performed\n");
 }
 
 
 void on_connect(uv_connect_t* req, int status) {
-    sockaddr addr = {};
+    struct sockaddr_in addr = {};
     int namelen = 0;
 
-    uv_tcp_getsockname((uv_tcp_t*)req->handle, &addr, &namelen);
-    sockaddr_in* addr_in = (sockaddr_in*)&addr;
+    uv_tcp_getpeername((uv_tcp_t*)req->handle, (struct sockaddr*)&addr, &namelen);
 
     if (status < 0) {
         #ifdef DEBUG_VERSION
             fprintf(stderr, "Connection failed\n");
-            fprintf(stderr, "Endpoint IP:   %s\n", inet_ntoa(addr_in->sin_addr));
-            fprintf(stderr, "Endpoint PORT: %d\n", ntohl(addr_in->sin_port));
+            fprintf(stderr, "Server IP:   %s\n", inet_ntoa(addr.sin_addr));
         #endif
 
         uv_close((uv_handle_t*)req->handle, on_close_connection);
@@ -218,8 +205,7 @@ void on_connect(uv_connect_t* req, int status) {
     else {
         #ifdef DEBUG_VERSION
             fprintf(stderr, "Connection success\n");
-            fprintf(stderr, "Endpoint IP:   %s\n", inet_ntoa(addr_in->sin_addr));
-            fprintf(stderr, "Endpoint PORT: %d\n", ntohl(addr_in->sin_port));
+            fprintf(stderr, "Server IP:   %s\n", inet_ntoa(addr.sin_addr));
         #endif
 
         // this makes possible to rise callbacks from different threads 
@@ -247,14 +233,12 @@ void on_acceptance(uv_stream_t* server_endpoint, int status) {
 
     if (!accept_stat) {
         #ifdef DEBUG_VERSION
-            sockaddr addr = {};
+            struct sockaddr_in addr = {0};
             int namelen = 0;
-            uv_tcp_getpeername(client_endpoint, &addr, &namelen);
-            sockaddr_in* addr_in = (sockaddr_in*)&addr;
+            uv_tcp_getpeername(client_endpoint, (struct sockaddr*)&addr, &namelen);
 
             fprintf(stderr, "New connection!\n");
-            fprintf(stderr, "Endpoint IP:   %s\n", inet_ntoa(addr_in->sin_addr));
-            fprintf(stderr, "Endpoint PORT: %d\n", ntohl(addr_in->sin_port));
+            fprintf(stderr, "IP address:   %s\n", inet_ntoa(addr.sin_addr));
         #endif
 
         // this makes possible to rise callbacks from different threads 

@@ -211,16 +211,16 @@ void* front_for_test_only(void* args) {
                 fill_body(buffer, my_name, NAME_SIZE);
                 fill_body(buffer, msg_body, MSG_SIZE);
 
-                print_buffer(buffer, 0);
+                // print_buffer(buffer, 0);
 
                 chat_message_t msg = create_chat_message(MSG_TYPE::TXT_MSG);
                 msg.read_message(&msg, buffer);
 
                 #ifdef DEBUG_VERSION
-                    fprintf(stderr, "msg type [%lu]\n", msg.msg_type);
-                    fprintf(stderr, "msg from: [%s]\n", msg.from);
-                    fprintf(stderr, "msg to: [%s]\n", msg.to);
-                    print_msg_body(&msg);
+                    // fprintf(stderr, "msg type [%lu]\n", msg.msg_type);
+                    // fprintf(stderr, "msg from: [%s]\n", msg.from);
+                    // fprintf(stderr, "msg to: [%s]\n", msg.to);
+                    // print_msg_body(&msg);
                 #endif
             
                 client->outgoing_msg->insert_head(msg);
@@ -239,7 +239,7 @@ void* front_for_test_only(void* args) {
                 fill_body(buffer, my_name, NAME_SIZE);
                 fill_body(buffer, my_pswd, PSWD_SIZE);
 
-                print_buffer(buffer, 0);
+                //print_buffer(buffer, 0);
 
                 chat_message_t msg = create_chat_message(MSG_TYPE::SYSTEM);
                 msg.read_message(&msg, buffer);
@@ -247,10 +247,10 @@ void* front_for_test_only(void* args) {
                 destroy_type_buffer(buffer);
 
                 #ifdef DEBUG_VERSION
-                    fprintf(stderr, "msg type [%lu]\n", msg.msg_type);
-                    fprintf(stderr, "msg from: [%s]\n", msg.from);
-                    fprintf(stderr, "msg to: [%s]\n", msg.to);
-                    print_msg_body(&msg);
+                    // fprintf(stderr, "msg type [%lu]\n", msg.msg_type);
+                    // fprintf(stderr, "msg from: [%s]\n", msg.from);
+                    // fprintf(stderr, "msg to: [%s]\n", msg.to);
+                    // print_msg_body(&msg);
                 #endif
                 client->outgoing_msg->insert_head(msg);
             }
@@ -274,7 +274,7 @@ void* front_for_test_only(void* args) {
                 fill_body(buffer, my_name, NAME_SIZE);
                 fill_body(buffer, my_pswd, PSWD_SIZE);
 
-                print_buffer(buffer, 0);
+                //print_buffer(buffer, 0);
 
                 chat_message_t msg = create_chat_message(MSG_TYPE::SYSTEM);
                 msg.read_message(&msg, buffer);
@@ -284,10 +284,10 @@ void* front_for_test_only(void* args) {
                 destroy_type_buffer(buffer);
 
                 #ifdef DEBUG_VERSION
-                    fprintf(stderr, "msg type [%lu]\n", msg.msg_type);
-                    fprintf(stderr, "msg from: [%s]\n", msg.from);
-                    fprintf(stderr, "msg to: [%s]\n", msg.to);
-                    print_msg_body(&msg);
+                    // fprintf(stderr, "msg type [%lu]\n", msg.msg_type);
+                    // fprintf(stderr, "msg from: [%s]\n", msg.from);
+                    // fprintf(stderr, "msg to: [%s]\n", msg.to);
+                    // print_msg_body(&msg);
                 #endif
 
                 client->outgoing_msg->insert_head(msg);
@@ -304,7 +304,7 @@ void* front_for_test_only(void* args) {
                 fill_body(buffer, (void*)&command, sizeof(COMMAND));
                 fill_body(buffer, my_name, NAME_SIZE);
         
-                print_buffer(buffer, 0);
+                //print_buffer(buffer, 0);
 
                 chat_message_t msg = create_chat_message(MSG_TYPE::SYSTEM);
                 msg.read_message(&msg, buffer);
@@ -312,10 +312,10 @@ void* front_for_test_only(void* args) {
                 destroy_type_buffer(buffer);
 
                 #ifdef DEBUG_VERSION
-                    fprintf(stderr, "msg type [%lu]\n", msg.msg_type);
-                    fprintf(stderr, "msg from: [%s]\n", msg.from);
-                    fprintf(stderr, "msg to: [%s]\n", msg.to);
-                    print_msg_body(&msg);
+                    // fprintf(stderr, "msg type [%lu]\n", msg.msg_type);
+                    // fprintf(stderr, "msg from: [%s]\n", msg.from);
+                    // fprintf(stderr, "msg to: [%s]\n", msg.to);
+                    // print_msg_body(&msg);
                 #endif
 
                 client->outgoing_msg->insert_head(msg);

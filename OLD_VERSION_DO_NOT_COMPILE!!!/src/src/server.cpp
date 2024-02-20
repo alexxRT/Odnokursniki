@@ -142,6 +142,7 @@ ERR_STAT operate_command(server_t* server, COMMAND code, chat_message_t* msg) {
     switch(code) {
         case COMMAND::LOG_IN: {
             base_client_t* client = log_in_client(server->client_base, msg->msg_body);
+            client->client_stream = msg->client_endpoint; // need to update client socket after re-login
 
             if (client) {
                 send_all_status_changed(server, client);

@@ -107,6 +107,14 @@ void* start_client_interface(void* args) {
         chat_message_t msg = client->incoming_msg->get_head()->data;
         client->incoming_msg->delete_head();
 
+        if (msg.sys_command == COMMAND::CHANGED_STAT) {
+            
+        }
+
+        if (msg.msg_type == MSG_TYPE::TXT_MSG) {
+            fprintf(stderr, "from %s: %s\n", msg.from, msg.msg_body);
+        }
+
         if (msg.sys_command == COMMAND::ON_CLOSE) {
             fprintf(stderr, "Disconnect confirmed!\n");
             client->status = STATUS::OFFLINE;
@@ -228,6 +236,12 @@ void* front_for_test_only(void* args) {
             break;
 
             case 1: {
+                FPRINTF("enter your name: ");
+                fscanf(stdin, "%s", my_name);
+
+                FPRINTF("enter your password: ");
+                fscanf(stdin, "%s", my_pswd);
+
                 buffer_t* buffer = create_type_buffer(MSG_TYPE::SYSTEM);
                 
                 fill_body(buffer, server_name,  NAME_SIZE);

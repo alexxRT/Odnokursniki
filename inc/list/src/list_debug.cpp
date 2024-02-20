@@ -13,10 +13,6 @@ static FILE* dump_file  = NULL;
 static FILE* graph_file = NULL;
 static FILE* log_file   = NULL; 
 
-#define ELEM( lst, pos ) (lst->buffer  + pos)
-#define NEXT( lst, pos ) (lst->buffer + (lst->buffer + pos)->next)
-#define PREV( lst, pos ) (lst->buffer + (lst->buffer + pos)->prev) 
-
 static const int HEAD_ID = 0;
 
 void InitLogFile (const char* const log_path)
@@ -323,7 +319,7 @@ LIST_ERR_CODE ListGraphDump (my_list* list) {
         size_t pos = GetElemPos (list, i, list->buffer[i].status);
 
         fprintf (graph_file, "\n\tNode%zu", i);
-        fprintf (graph_file, "[label = \"INDX: %zu|NUM: %lu|DATA: %d\";];\n", i, pos, list->buffer[i].data);
+        fprintf (graph_file, "[label = \"INDX: %zu|NUM: %lu|DATA: \";];\n", i, pos); //list->buffer[i].data);
         fprintf (graph_file, "\tNode%zu", i);
 
         switch (list->buffer[i].status) {
@@ -416,7 +412,6 @@ LIST_ERR_CODE PrintList (my_list* list, NODE_STATUS node_type) {
 void PrintListElem (my_list* list, size_t elem) {
     fprintf (dump_file,  "Elem address [%p]\n",   ELEM(list, elem));
     fprintf (dump_file,  "Elem index   [%lu]\n",  ELEM(list, elem)->index);
-    fprintf (dump_file,  "Elem data    [%d]\n",   ELEM(list, elem)->data);
     fprintf (dump_file,  "Elem status  [%d]\n\n", ELEM(list, elem)->status);
 
     return;

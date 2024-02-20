@@ -178,7 +178,7 @@ size_t get_cmd_code(const char* input) {
 
 void print_available_commands() {
     for (int i = 0; i < COMMANDS_NUM; i ++) {
-        FPRINTF("%s\n", COMMANDS[i]);
+        fprintf(stderr, "%s\n", COMMANDS[i]);
     }
 }
 
@@ -190,12 +190,12 @@ void* front_for_test_only(void* args) {
     thread_args* thr_arg = (thread_args*)args;
     client_t* client = (client_t*)thr_arg->owner_struct;
 
-    FPRINTF("Input Your Command\n");
-    FPRINTF("Available Commands:\n");
+    fprintf(stderr, "Input Your Command\n");
+    fprintf(stderr, "Available Commands:\n");
     print_available_commands();
 
     while (1) {
-        FPRINTF(":  ");
+        fprintf(stderr, ":  ");
         char input[10] = {0}; 
         fscanf(stdin, "%s", input);
 
@@ -207,11 +207,11 @@ void* front_for_test_only(void* args) {
         switch (CMD_CODE) {
             case 0: {
                 char name[NAME_SIZE] = {0};
-                FPRINTF("input addressant name: ");
+                fprintf(stderr, "input addressant name: ");
                 fscanf(stdin, "%s", name);
 
                 char msg_body[MSG_SIZE] = {0};
-                FPRINTF("input your message: ");
+                fprintf(stderr, "input your message: ");
                 get_msg(msg_body);
 
                 buffer_t* buffer = create_type_buffer(MSG_TYPE::TXT_MSG);
@@ -236,10 +236,10 @@ void* front_for_test_only(void* args) {
             break;
 
             case 1: {
-                FPRINTF("enter your name: ");
+                fprintf(stderr, "enter your name: ");
                 fscanf(stdin, "%s", my_name);
 
-                FPRINTF("enter your password: ");
+                fprintf(stderr, "enter your password: ");
                 fscanf(stdin, "%s", my_pswd);
 
                 buffer_t* buffer = create_type_buffer(MSG_TYPE::SYSTEM);
@@ -271,10 +271,10 @@ void* front_for_test_only(void* args) {
             break;
 
             case 2: {
-                FPRINTF("enter your name: ");
+                fprintf(stderr, "enter your name: ");
                 fscanf(stdin, "%s", my_name);
 
-                FPRINTF("enter your password: ");
+                fprintf(stderr, "enter your password: ");
                 fscanf(stdin, "%s", my_pswd);
 
                 buffer_t* buffer = create_type_buffer(MSG_TYPE::SYSTEM);
@@ -353,8 +353,10 @@ void run_client_backend(client_t* client, size_t port, const char* ip) {
 
     pthread_t thread_id[THREAD_NUM];
 
-    InitLogFile("../log_client.txt");
-    
+    #ifdef DEBUG_VERSION
+        InitLogFile("../log_client.txt");
+    #endif
+
     pthread_create(&thread_id[0], NULL, start_networking,       (void*)&args);
     pthread_create(&thread_id[1], NULL, start_client_interface, (void*)&args);
     pthread_create(&thread_id[2], NULL, start_sender,           (void*)&args);

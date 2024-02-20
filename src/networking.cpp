@@ -143,7 +143,9 @@ void on_read(uv_stream_t* endpoint, ssize_t nread, const uv_buf_t* buf) {
 
         destroy_type_buffer(buffer);
 
-        fprintf(stderr, "Num bytes read from socket %lu\n", nread);
+        #ifdef DEBUG_VERSION
+            fprintf(stderr, "Num bytes read from socket %lu\n", nread);
+        #endif
     }
     else if (nread < 0) { //error happend on connection, tear up connection
         fprintf(stderr, "<<<<<<     Error while reading     >>>>>>\n");
@@ -348,7 +350,7 @@ void* start_networking(void* args) {
     fprintf(stderr, "<<<<<<     Networking finalization     >>>>>>\n");
 
     if (backend_stat != ERR_STAT::SUCCESS) {
-        fprintf(stderr, "Error Network Backend. Error Code: %d\n", backend_stat);
+        fprintf(stderr, "Error Network Backend. Error Code: %llu\n", backend_stat);
     }
 
     destroy_connection();

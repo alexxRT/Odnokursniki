@@ -247,12 +247,12 @@ ERR_STAT operate_request(server_t* server, chat_message_t* msg) {
                 }
             }
             else 
-                fprintf(stderr, "Unexpected error code %d\n", err_code);
+                fprintf(stderr, "Unexpected error code %llu\n", err_code);
         }
         break;
 
         default: {
-            fprintf(stderr, "Unexpected msg_type: %d\n", msg_type);
+            fprintf(stderr, "Unexpected msg_type: %llu\n", msg_type);
             fprintf(stderr, "Request ignored...\n\n");
 
             return ERR_STAT::BAD_REQUEST;
@@ -359,7 +359,9 @@ void run_server_backend(server_t* server, const char* ip_address, size_t port) {
     args.owner_struct = (void*)server;
     args.owner        = OWNER::SERVER;
 
-    InitLogFile("../log_server.txt");
+    #ifdef DEBUG_VERSION
+        InitLogFile("../log_server.txt");
+    #endif
 
     pthread_create(&pid[0], NULL, start_networking,(void*)&args);
     pthread_create(&pid[1], NULL, start_interface, (void*)&args);

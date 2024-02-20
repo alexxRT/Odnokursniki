@@ -5,7 +5,7 @@
 #include "list.h"
 #include "list_debug.h"
 
-typedef enum SENDER_STATUS : int {
+enum class SENDER_STATUS : int {
     ACTIVE,
     SHUTDOWN
 };

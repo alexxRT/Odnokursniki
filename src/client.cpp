@@ -10,7 +10,7 @@
 #ifdef DEBUG_VERSION
     #define FPRINTF(...) fprintf(stderr, __VA_ARGS__)
 #else 
-    #define FPRINTF(str) (void*)0
+    #define FPRINTF(...) (void*)0
 #endif
 
 //SEND MESSAGE

@@ -14,7 +14,7 @@ enum class COMMAND : uint64_t {
     CHANGED_STAT  = 5,
     ON_CLOSE      = 6,
     SHUTDOWN_SEND = 7,
-    UNKNOWN       = -1
+    UNKNOWN       = 8
 };
 
 enum class STATUS : int {

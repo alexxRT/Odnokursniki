@@ -1,3 +1,6 @@
 [submodule "OLD_VERSION_DO_NOT_COMPILE!!!/src/inc/libuv"]
 	path = OLD_VERSION_DO_NOT_COMPILE!!!/src/inc/libuv
 	url = https://github.com/libuv/libuv.git
+[submodule "inc/libuv"]
+	path = inc/libuv
+	url = https://github.com/libuv/libuv.git

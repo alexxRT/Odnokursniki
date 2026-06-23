@@ -4,11 +4,20 @@
 #include <uv.h>
 #include "messages.h"
 
-// this thread safe variables are used to rise callbacks 
+// this thread safe variables are used to rise callbacks
 // from defferent thread, where is no event loop running
 static uv_async_t async_send_message;
 static uv_async_t async_close_connection;
 static uv_async_t async_stop_networking;
+
+typedef struct event {
+    uv_mutex_t event_mutex;
+    uv_sem_t   event_sem;
+    bool       running_flag;
+    uv_async_t event;
+} net_event_t;
+
+static net_event_t async_write_event;
 
 //callbacks calls, used from different threads
 void call_async_write(uv_stream_t* write_dest, buffer_t* buf_to_write);
@@ -16,7 +25,7 @@ void call_async_close(uv_handle_t* close_handle);
 void call_async_stop ();
 
 typedef struct client_ client_t;
-typedef struct server_ server_t; 
+typedef struct server_ server_t;
 
 typedef struct connection_ {
     OWNER owner;

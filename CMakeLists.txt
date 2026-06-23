@@ -48,8 +48,8 @@ add_subdirectory(inc/messages)
 
 # ==> Build tests
 
-add_executable(server server.cpp src/server.cpp src/chat_base.cpp src/networking.cpp src/sender.cpp)
-add_executable(client client.cpp src/client.cpp src/chat_base.cpp src/networking.cpp src/sender.cpp)
+add_executable(server server.cpp src/server.cpp src/chat_base.cpp src/networking.cpp src/sender.cpp src/chat_session.cpp)
+add_executable(client client.cpp src/client.cpp src/chat_base.cpp src/networking.cpp src/sender.cpp src/chat_session.cpp)
 
 #target_link_libraries(server      PUBLIC ${LIBUV_LIBRARY} chat_msg list)
 target_link_libraries(server       PUBLIC uv_a chat_msg list)

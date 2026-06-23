@@ -2,6 +2,7 @@
 #define SERVER_H
 
 #include "chat_configs.h"
+#include "chat_session.h"
 #include "threads_safe.h"
 #include "chat_base.h"
 #include "list.h"
@@ -9,7 +10,7 @@
 
 
 // PLAN//
-// three threads: 
+// three threads:
 // backend  :        accept connection, recieve messages, send messages
 // interfece:        pop incoming, change server state, push reply to outgoing
 // sender   :        pop outgoing list, init send callback
@@ -23,7 +24,7 @@
 // interfece:
 // pop incomming msg->perform logic->create response && change server state->push into outgoing msg
 
-// sender: 
+// sender:
 // look up for updates in outgoing msg list
 // create bytes message, create callback
 
@@ -36,16 +37,21 @@
 
 enum SERVER_STATUS : int {
     DOWN = 0,
-    UP   = 1 
+    UP   = 1
+};
+
+enum BROADCAST : int {
+    CLIENT_LOG_IN = 0,
+    CLIENT_LOG_OUT = 1,
 };
 
 typedef struct server_ {
     SERVER_STATUS status;
     chat_base_t* client_base;
-    ts_list* incoming_msg; 
+    ts_list* incoming_msg;
     ts_list* outgoing_msg;
     uv_loop_t* event_loop;
-    
+    chat_session_t active_sessions[MAX_SESSIONS_COUNT];
 }server_t;
 
 

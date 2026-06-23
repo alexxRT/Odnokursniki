@@ -15,7 +15,7 @@ do {                                          \
                                               \
 } while(0)                                    \
 
-#else 
+#else
 #define ASSERT(buffer) (void*)0
 
 #endif
@@ -46,7 +46,7 @@ const write_handler_t write_handlers[] = {
     write_error_msg
 };
 
-int read_system_msg(chat_message_t* msg, buffer_t* buffer) { 
+int read_system_msg(chat_message_t* msg, buffer_t* buffer) {
     ASSERT(buffer);
     assert(msg);
     assert(msg->msg_type == buffer->type && "msg and buffer different types");
@@ -80,10 +80,10 @@ int read_system_msg(chat_message_t* msg, buffer_t* buffer) {
     assert(position == buffer->capacity && "msg read overlaping");
     ASSERT(buffer);
 
-    return position; 
+    return position;
 };
 
-int read_text_msg(chat_message_t* msg, buffer_t* buffer) { 
+int read_text_msg(chat_message_t* msg, buffer_t* buffer) {
     ASSERT(buffer);
     assert(msg);
     assert(msg->msg_type == buffer->type && "msg and buffer different types");
@@ -119,12 +119,15 @@ int read_error_msg(chat_message_t* msg, buffer_t* buffer) {
     assert(msg->msg_type == buffer->type && "msg and buffer different types");
 
     size_t position = sizeof(MSG_TYPE);
-    
+
     memcpy(msg->to, buffer->buf + position, NAME_SIZE);
     position += NAME_SIZE;
 
     memcpy(msg->from, buffer->buf + position, NAME_SIZE);
     position += NAME_SIZE;
+
+    memcpy((char*)&(msg->sys_command), buffer->buf + position, sizeof(COMMAND));
+    position += sizeof(COMMAND);
 
     memcpy ((char*)&(msg->error_stat), buffer->buf + position, sizeof(ERR_STAT));
     position += sizeof(ERR_STAT);
@@ -135,10 +138,10 @@ int read_error_msg(chat_message_t* msg, buffer_t* buffer) {
     assert(position == buffer->capacity && "msg read overlaping");
     ASSERT(buffer);
 
-    return position; 
+    return position;
 };
 
-int read_broadcast_msg(chat_message_t* msg, buffer_t* buffer) { 
+int read_broadcast_msg(chat_message_t* msg, buffer_t* buffer) {
     ASSERT(buffer);
     assert(msg);
     assert(msg->msg_type == buffer->type && "msg and buffer different types");
@@ -157,14 +160,14 @@ int read_broadcast_msg(chat_message_t* msg, buffer_t* buffer) {
     assert(position == buffer->capacity && "msg read overlaping");
     ASSERT(buffer);
 
-    return position; 
+    return position;
 };
 
-int write_system_msg(chat_message_t* msg, buffer_t* buffer) { 
+int write_system_msg(chat_message_t* msg, buffer_t* buffer) {
     ASSERT(buffer);
     assert(msg);
     assert(msg->msg_type == buffer->type && "msg and buffer different types");
-    
+
     fill_body(buffer, msg->to, NAME_SIZE);
 
     fill_body(buffer, msg->from, NAME_SIZE);
@@ -175,14 +178,14 @@ int write_system_msg(chat_message_t* msg, buffer_t* buffer) {
 
     ASSERT(buffer);
 
-    return buffer->size; 
+    return buffer->size;
 };
 
-int write_text_msg(chat_message_t* msg, buffer_t* buffer) { 
+int write_text_msg(chat_message_t* msg, buffer_t* buffer) {
     ASSERT(buffer);
     assert(msg);
     assert(msg->msg_type == buffer->type && "msg and buffer different types");
-    
+
     fill_body(buffer, msg->to, NAME_SIZE);
 
     fill_body(buffer, msg->from, NAME_SIZE);
@@ -191,15 +194,15 @@ int write_text_msg(chat_message_t* msg, buffer_t* buffer) {
 
     ASSERT(buffer);
 
-    return buffer->size; 
+    return buffer->size;
 };
 
 
-int write_broadcast_msg(chat_message_t* msg, buffer_t* buffer) { 
+int write_broadcast_msg(chat_message_t* msg, buffer_t* buffer) {
     ASSERT(buffer);
     assert(msg);
     assert(msg->msg_type == buffer->type && "msg and buffer different types");
-    
+
     fill_body(buffer, msg->to, NAME_SIZE);
 
     fill_body(buffer, msg->from, NAME_SIZE);
@@ -216,10 +219,12 @@ int write_error_msg(chat_message_t* msg, buffer_t* buffer) {
     ASSERT(buffer);
     assert(msg);
     assert(msg->msg_type == buffer->type && "msg and buffer different types");
-    
+
     fill_body(buffer, msg->to, NAME_SIZE);
 
     fill_body(buffer, msg->from, NAME_SIZE);
+
+    fill_body(buffer, (void*)&msg->sys_command, sizeof(COMMAND));
 
     fill_body(buffer, (void*)&msg->error_stat, sizeof(ERR_STAT));
 
@@ -240,7 +245,7 @@ chat_message_t create_chat_message (MSG_TYPE type) {
     msg.msg_type = type;
     msg.read_message  = read_handlers[indx];
     msg.write_message = write_handlers[indx];
-    
+
     return msg;
 };
 
@@ -267,7 +272,7 @@ buffer_t* create_type_buffer(MSG_TYPE type) {
 
         char* buf = CALLOC(buffer_capacity, char);
         buffer->buf  = buf;
-    
+
         fill_body(buffer, (void*)&type, sizeof(MSG_TYPE));
 
         return buffer;
@@ -285,7 +290,7 @@ buffer_t* create_type_buffer(MSG_TYPE type) {
 
     }
     else if (type == MSG_TYPE::ERROR_MSG) {
-        size_t buffer_capacity = MSG_SIZE + 2*NAME_SIZE + sizeof(ERR_STAT) + sizeof(MSG_TYPE);
+        size_t buffer_capacity = MSG_SIZE + 2*NAME_SIZE + sizeof(ERR_STAT) + sizeof(COMMAND) + sizeof(MSG_TYPE);
         buffer->capacity = buffer_capacity;
 
         char* buf = CALLOC(buffer_capacity, char);
@@ -296,7 +301,7 @@ buffer_t* create_type_buffer(MSG_TYPE type) {
         return buffer;
     }
 
-    return NULL; 
+    return NULL;
 };
 
 

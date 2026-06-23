@@ -4,6 +4,7 @@
 #include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <cstdint>
 
 
 enum class COMMAND : uint64_t {
@@ -14,7 +15,8 @@ enum class COMMAND : uint64_t {
     CHANGED_STAT  = 5,
     ON_CLOSE      = 6,
     SHUTDOWN_SEND = 7,
-    UNKNOWN       = 8
+    SEND_MESSAGE  = 8,
+    UNKNOWN       = 9
 };
 
 enum class STATUS : int {
@@ -34,14 +36,19 @@ enum class ERR_STAT : uint64_t{
     CONNECTION_LOST  = 1,
     INVALID_MSG      = 2,
     NAME_TAKEN       = 3,
-    INCORRECT_LOG_IN = 4,
+    BAD_LOGIN        = 4,
     BAD_REQUEST      = 5,
     UNKNOWN_CLIENT   = 6,
     UNKNOWN_CMD      = 7,
     BIND_ERR         = 8,
     LISTEN_ERR       = 9,
     LOOP_EXIT_ERROR  = 10,
-    CONNECT_ERR      = 11
+    CONNECT_ERR      = 11,
+    BAD_OPERATE      = 12, // server side error on new request operate
+    CLIENT_OFFLINE   = 13,
+    BAD_PSWD         = 14,
+    UBASE_OVERFLOW   = 15,
+    LIBUV_ERROR      = 16
 
     //....... fill further then .......
 };
@@ -50,5 +57,9 @@ const int PSWD_SIZE = sizeof(uint64_t);
 const int NAME_SIZE = sizeof(uint64_t);
 
 const int MSG_SIZE = 100;
+
+const size_t MAX_SESSIONS_COUNT = 10;
+
+uint64_t hash_djb2_data(void* data, size_t size);
 
 #endif

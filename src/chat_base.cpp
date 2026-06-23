@@ -13,7 +13,20 @@ uint64_t hash_djb2(const char sample[]) //Dan Bernstein hash//
         hash = ((hash << 5) + hash) + (int)c; /* hash * 33 + c */
         c = *(++sample);
     }
-    
+
+    return hash;
+}
+
+uint64_t hash_djb2_data(void* data, size_t size) {
+    char* data_hash = (char*)data;
+    uint64_t hash = 5381;
+
+    size_t count = 0;
+    while (count < size) {
+        hash = ((hash << 5) + hash) + (int)data_hash[count];
+        count ++;
+    }
+
     return hash;
 }
 
@@ -38,85 +51,86 @@ chat_base_t* create_client_base(size_t base_size) {
 }
 
 void destoy_client_base(chat_base_t* base) {
-    //it should be managed by networking thread on close connection
-
     FREE(base->base);
     FREE(base);
 
     return;
 }
 
-void change_status(base_client_t* client) {
-    if (client->status == STATUS::ONLINE)
-        client->status = STATUS::OFFLINE;
-    else 
-        client->status = STATUS::ONLINE;
 
-    return;
-}
-
-base_client_t* registr_client(chat_base_t* base, uv_stream_t* endpoint, const char* log_in_buf) {
+ERR_STAT registr_client(chat_base_t* base, chat_session_t* session, const char* log_in_buf) {
     char usr_name[NAME_SIZE] = {0};
     char password[PSWD_SIZE] = {0};
 
     strncpy(usr_name, log_in_buf,  NAME_SIZE);
     strncpy(password, log_in_buf + NAME_SIZE, PSWD_SIZE);
 
-    // fprintf(stderr, "REGISTERING ...\n");
-    fprintf(stderr, "name [%s]\n", usr_name);
-    fprintf(stderr, "usr_pswd [%s]\n", password);
+    fprintf(stderr, "[INFO] Regitering new client; session_id=[%llu]\n", session->client_id);
 
     base_client_t* client = get_client(base, usr_name);
 
     //if client allready exists with this name
-    if (client)
-        return NULL;
+    if (client) {
+        fprintf(stderr, "[ERROR] Username is taken; session_id=[%llu]\n", session->client_id);
+        return ERR_STAT::NAME_TAKEN;
+    }
 
     //if base capacity is not enough to fit new user
-    if (base->size >= base->max_size)
-        return NULL;
+    if (base->size >= base->max_size) {
+        fprintf(stderr, "[ERROR] User database max capacity reached; session_id=[%llu]\n", session->client_id);
+        return ERR_STAT::UBASE_OVERFLOW;
+    }
 
     //add new user
     base_client_t new_client = {};
-    new_client.client_stream = endpoint;
 
     uint64_t name_hash = base->hash_client(usr_name);
     uint64_t pswd_hash = base->hash_client(password);
+    session->client_name = name_hash;
     new_client.name_hash = name_hash;
     new_client.pswd_hash = pswd_hash;
-    
+
     strncpy(new_client.name, usr_name, NAME_SIZE);
 
-    base_client_t* new_client_addr = base->base + base->size;
     base->base[base->size] = new_client;
     base->size ++;
 
-    return new_client_addr;
+    fprintf(stderr, "[INFO] New user added to ubase; session_id=[%llu]\n", session->client_id);
+    return ERR_STAT::SUCCESS;
 }
 
 //when log in or log out: log_in_buf, log_out_buf contain only pswd and name hashes
-base_client_t* log_in_client(chat_base_t* base, const char* log_in_buf) {
-    char usr_name[NAME_SIZE] = {0};
-    char password[PSWD_SIZE] = {0};
-
-    strncpy(usr_name, log_in_buf,  NAME_SIZE);
-    strncpy(password, log_in_buf + NAME_SIZE, PSWD_SIZE);
-
-    uint64_t pswd_hash = base->hash_client(password);
-
-    base_client_t* client = get_client(base, usr_name);
-
-    //client found
-    if (client) {
-        //client entered//
-        if (client->pswd_hash == pswd_hash)
-            return client;
-        else
-            return NULL;
+ERR_STAT log_in_client(chat_base_t* base, chat_session_t* session, const char* authorization_buffer) {
+    if (session->state == CLIENT_STATE::LOGGED_IN) {
+        fprintf(stderr, "[WARNING] Client double log in attempt, no effect; session_id=[%llu]\n",
+                            session->client_id);
+        return ERR_STAT::SUCCESS;
     }
 
-    //client does not exist
-    return NULL;
+    char username[NAME_SIZE] = {0};
+    strncpy(username, authorization_buffer, NAME_SIZE);
+
+    base_client_t* client = get_client(base, username);
+
+    if (client) {
+        char password[PSWD_SIZE] = {0};
+        strncpy(password, authorization_buffer + NAME_SIZE, PSWD_SIZE);
+        uint64_t pswd_hash = base->hash_client(password);
+
+        fprintf(stderr, "[INFO] Client found in database; session_id=[%llu]\n", session->client_id);
+        fprintf(stderr, "[INFO] Validate client password; session_id=[%llu]\n", session->client_id);
+
+        if (client->pswd_hash == pswd_hash) {
+            session->client_name = client->name_hash; // attach client name to support search by name
+            return ERR_STAT::SUCCESS;
+        }
+        else {
+            return ERR_STAT::BAD_PSWD;
+        }
+    }
+
+    fprintf(stderr, "[FATAL] Unable log in not regitered client; session_id=[%llu]\n", session->client_id);
+    return ERR_STAT::BAD_LOGIN;
 }
 
 base_client_t* log_out_client(chat_base_t* base, const char* log_out_buf) {
@@ -134,7 +148,7 @@ base_client_t* log_out_client(chat_base_t* base, const char* log_out_buf) {
     return NULL;
 }
 
-// //TO DO:   
+// //TO DO:
 // int look_up_client(chat_base_t* base, uv_stream_t* endpoint) {
 //     assert(base);
 //     assert(endpoint);
@@ -157,7 +171,7 @@ base_client_t* log_out_client(chat_base_t* base, const char* log_out_buf) {
 //         if (name_hash == base->base[i].name_hash)
 //             return i;
 //     }
-    
+
 //     return -1;
 // };
 
@@ -168,7 +182,7 @@ base_client_t* log_out_client(chat_base_t* base, const char* log_out_buf) {
 //         if (name_hash == base->base[i].name_hash)
 //             return i;
 //     }
-    
+
 //     return -1;
 // };
 

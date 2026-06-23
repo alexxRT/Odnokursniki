@@ -3,12 +3,15 @@
 
 #include <stdlib.h>
 #include "memory.h"
+#include "chat_session.h"
 #include "chat_configs.h"
 #include <uv.h>
 
 const int BASE_SIZE = 100;
 
 typedef uint64_t (*hash_base_t)(const char[]);
+
+typedef struct message_ chat_message_t;
 
 typedef struct base_client_ {
     uv_stream_t* client_stream;
@@ -30,10 +33,10 @@ chat_base_t* create_client_base(size_t base_size);
 void destoy_client_base(chat_base_t* base);
 
 //reg_buf = "namepassword"
-base_client_t* registr_client(chat_base_t* base, uv_stream_t* stream, const char* reg_buf);
+ERR_STAT registr_client(chat_base_t* base, chat_session_t* session, const char* registration_buffer);
 
 //log_in_buf = "namepassword"
-base_client_t* log_in_client (chat_base_t* base, const char* log_in_buf);
+ERR_STAT log_in_client (chat_base_t* base, chat_session_t* session, const char* authorization_buffer);
 
 //log_out_buf = "name"
 base_client_t* log_out_client(chat_base_t* base, const char* log_out_buf);
@@ -49,6 +52,7 @@ int look_up_client(chat_base_t* base, uv_stream_t* endpoint);
 int look_up_client(chat_base_t* base, char* name);
 
 base_client_t* get_client(chat_base_t* base, char* name);
+base_client_t* get_client(chat_base_t* base, uint64_t clinet_id);
 base_client_t* get_client(chat_base_t* base, uv_stream_t* endpoint);
 // --------- //
 

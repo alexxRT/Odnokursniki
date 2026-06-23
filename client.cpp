@@ -3,7 +3,6 @@
 
 
 
-
 int main () {
 
     client_t* client = create_client();

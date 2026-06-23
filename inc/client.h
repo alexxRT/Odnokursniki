@@ -5,7 +5,7 @@
 #include "chat_configs.h"
 #include "list.h"
 #include "threads_safe.h"
-
+#include "chat_session.h"
 
 typedef struct client_ {
     STATUS       status;
@@ -14,7 +14,8 @@ typedef struct client_ {
     uv_loop_t*   event_loop;
 
     ts_list* incoming_msg;
-    ts_list* outgoing_msg;
+
+    chat_session_t session;
 
 } client_t;
 

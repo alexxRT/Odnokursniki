@@ -5,7 +5,10 @@
 #include "threads_safe.h"
 #include "memory.h"
 
+#include <thread>
+
 static connect_t* connection = NULL;
+static net_event_t write_event;
 
 typedef struct write_req {
     uv_write_t   uv_write_handle;
@@ -43,18 +46,17 @@ void async_send(uv_async_s* async_args) {
     write_req_t*  write_req = (write_req_t*)async_args->next_closing;
     uv_stream_t*  write_endpoint = write_req->endpoint;
 
-    //fprintf(stderr, "write endpoint before write: %p\n", write_endpoint);
+    chat_session_t* session = (chat_session_t*)uv_handle_get_data((uv_handle_t*)write_endpoint);
+    fprintf(stderr, "[INFO] Register write event in loop; session_id=[%llu]\n", session->client_id);
     int write_stat = uv_write((uv_write_t*)write_req, write_endpoint, &write_req->buf, 1, on_write);
 
     // When write stat < 0, request hasn't been put in event queue, so on_write() never been called!
     if (write_stat < 0) {
-        fprintf(stderr, "Error while initing writing request\n");
-
+        fprintf(stderr, "[ERROR] Failed register on_write event in loop; session_id=[%llu]\n", session->client_id);
         uv_close((uv_handle_t*)write_endpoint, on_close_connection);
         free_write_req(write_req);
+        uv_sem_post(&async_write_event.event_sem);
     }
-
-    fprintf(stderr, "Msg Write Success\n");
 }
 
 void async_close(uv_async_s* async_args) {
@@ -63,16 +65,23 @@ void async_close(uv_async_s* async_args) {
 
 
 void call_async_write(uv_stream_t* write_dest, buffer_t* buf_to_write) {
-    write_req_t* write_req = CALLOC(1, write_req_t);
+    chat_session_t* session = (chat_session_t*)uv_handle_get_data((uv_handle_t*)write_dest);
+    fprintf(stderr, "[INFO] Pending write; session_id=[%llu]\n", session->client_id);
+    uv_sem_wait(&async_write_event.event_sem);
 
+    write_req_t* write_req = CALLOC(1, write_req_t);
     write_req->buf = uv_buf_init(CALLOC(buf_to_write->capacity, char), buf_to_write->capacity);
     memcpy(write_req->buf.base, buf_to_write->buf, buf_to_write->capacity);
 
     write_req->endpoint = write_dest;
+    async_write_event.event.next_closing = (uv_handle_t*)write_req;
 
-    async_send_message.next_closing = (uv_handle_t*)write_req;
-
-    uv_async_send(&async_send_message);
+    int send_async = uv_async_send(&async_write_event.event);
+    if (send_async < 0) {
+        fprintf(stderr, "[FATAL] Failed send async write event; session_id=[%llu]\n", session->client_id);
+        free_write_req(write_req);
+        uv_sem_post(&async_write_event.event_sem);
+    }
 }
 
 void call_async_close(uv_handle_t* close_handle) {
@@ -96,40 +105,41 @@ void alloc_cb (uv_handle_t* alloc_handle, size_t suggested_size, uv_buf_t* buf) 
     }
     else {
         buf->base = REALLOC(buf->base, suggested_size, char);
-        buf->len  = suggested_size; 
+        buf->len  = suggested_size;
     }
-
-    uv_handle_set_data(alloc_handle, buf->base);
 }
 
 //close handle = (uv_handle_t*)(uv_stream_t type)
+
+// Called for multiple places in code:
+// - on_read failed
+// - on write failed
+// - force call from server operation loop
+// -> mismatch data path; invalid session_id
+
 void on_close_connection(uv_handle_t* close_handle) {
     uv_read_stop((uv_stream_t*)close_handle);
+
+    chat_session_t* active_session = (chat_session_t*)uv_handle_get_data(close_handle);
+    fprintf(stderr, "[INFO] Terminating active session; session_id=[%llu]\n", active_session->client_id);
+
+    active_session->client_id     = 0;
+    active_session->client_name   = 0;
+    active_session->client_stream = NULL;
+    active_session->state = CLIENT_STATE::DISCONNECTED;
+
+    fprintf(stderr, "[INFO] Session terminated\n");
     FREE(close_handle);
-
-    chat_message_t close_confirm_msg = create_chat_message(MSG_TYPE::SYSTEM);
-    close_confirm_msg.sys_command = COMMAND::ON_CLOSE;
-
-    if (connection->owner == OWNER::SERVER)
-        connection->server->incoming_msg->insert_head(close_confirm_msg);
-    else if (connection->owner == OWNER::CLIENT)
-        connection->client->incoming_msg->insert_head(close_confirm_msg);
-
-    fprintf(stderr, "<<<<<<     Connection closed     >>>>>>\n");
 }
 
 void on_read(uv_stream_t* endpoint, ssize_t nread, const uv_buf_t* buf) {
     if (nread > 0) {
-        MSG_TYPE   msg_type = get_msg_type(buf->base);
+        MSG_TYPE  msg_type = get_msg_type(buf->base);
         chat_message_t msg = create_chat_message(msg_type);
 
-        buffer_t* buffer = create_type_buffer(msg_type); 
+        buffer_t* buffer = create_type_buffer(msg_type);
         buffer->buf  = buf->base;
         buffer->size = buffer->capacity;
-
-        // fprintf(stderr, "%lu msg type recieved!\n", msg_type);
-        // fprintf(stderr, "recieved %lu bytes\n", buf->len);
-        // fprintf(stderr, "buffer capacity %lu\n", buffer->capacity);
 
         size_t read_size = (msg.read_message)(&msg, buffer);
         msg.client_endpoint = endpoint;
@@ -140,20 +150,11 @@ void on_read(uv_stream_t* endpoint, ssize_t nread, const uv_buf_t* buf) {
         else {
             connection->server->incoming_msg->insert_head(msg);
         }
-
         destroy_type_buffer(buffer);
-
-        #ifdef DEBUG_VERSION
-            fprintf(stderr, "Num bytes read from socket %lu\n", nread);
-        #endif
     }
     else if (nread < 0) { //error happend on connection, tear up connection
-        fprintf(stderr, "<<<<<<     Error while reading     >>>>>>\n");
-        fprintf(stderr, "%s\n\n",   uv_strerror(nread));
-
-        chat_message_t msg = create_chat_message(MSG_TYPE::ERROR_MSG);
-        msg.error_stat = ERR_STAT::CONNECTION_LOST;
-        msg.client_endpoint = endpoint;
+        chat_session_t* session = (chat_session_t*)uv_handle_get_data((uv_handle_t*)endpoint);
+        fprintf(stderr, "[ERROR] Read failed: EOF; session_id=[%llu]\n", session->client_id);
 
         uv_close((uv_handle_t*)endpoint, on_close_connection);
     }
@@ -163,98 +164,77 @@ void on_read(uv_stream_t* endpoint, ssize_t nread, const uv_buf_t* buf) {
 }
 
 void on_write(uv_write_t* write_handle, int status) {
-    if (status) {
-        fprintf(stderr, "<<<<<<     Error while writing     >>>>>>\n");
-        fprintf(stderr, "%s\n\n",   uv_strerror(status));
+    chat_session_t* session = (chat_session_t*)uv_handle_get_data((uv_handle_t*)((write_req_t*)write_handle)->endpoint);
+    fprintf(stderr, "[INFO:ON_WRITE] on_write invocation; session_id=[%llu]\n", session->client_id);
 
+    if (status) {
+        fprintf(stderr, "[ERROR] Write failed: pipe error; session_id=[%llu]\n", session->client_id);
         uv_close((uv_handle_t*)write_handle->send_handle, on_close_connection);
+        free_write_req((write_req_t*)write_handle);
+        return;
     }
 
-    // from libuv src code
-    // if (req->error == 0) {
-    //     if (req->bufs != req->bufsml)
-    //         free(req->bufs);
-    //     req->bufs = NULL;
-    // }
-    // and fundomental one:
-    //  req->bufs = req->bufsml;
-    //  if (nbufs > ARRAY_SIZE(req->bufsml))
-    //     req->bufs = malloc(nbufs * sizeof(bufs[0]));
-    // So NO FREE() can be performed on bufs!!!
-
+    fprintf(stderr, "[INFO] Write success; session_id=[%llu]\n", session->client_id);
     free_write_req((write_req_t*)write_handle);
-
-    //fprintf(stderr, "on_write() was performed\n");
+    uv_sem_post(&async_write_event.event_sem);
 }
 
 
 void on_connect(uv_connect_t* req, int status) {
-    struct sockaddr_in addr = {};
-    int namelen = 0;
-
-    uv_tcp_getpeername((uv_tcp_t*)req->handle, (struct sockaddr*)&addr, &namelen);
-
     if (status < 0) {
-        #ifdef DEBUG_VERSION
-            fprintf(stderr, "Connection failed\n");
-            fprintf(stderr, "Server IP:   %s\n", inet_ntoa(addr.sin_addr));
-        #endif
-
+        fprintf(stderr, "[ERROR] Failed to connect, bad status=[%d]\n", status);
         uv_close((uv_handle_t*)req->handle, on_close_connection);
-
         FREE(req);
+        return;
     }
-    else {
-        #ifdef DEBUG_VERSION
-            fprintf(stderr, "Connection success\n");
-            fprintf(stderr, "Server IP:   %s\n", inet_ntoa(addr.sin_addr));
-        #endif
 
-        // this makes possible to rise callbacks from different threads 
-        // in thread safe manner
-        uv_async_init(connection->client->event_loop, &async_close_connection, async_close);
-        uv_async_init(connection->client->event_loop, &async_stop_networking,  async_stop);
-        uv_async_init(connection->client->event_loop, &async_send_message,     async_send);
+    connection->client->server_dest = (uv_stream_t*)req->handle;
+    uint64_t client_id = hash_djb2_data(&connection->client->server_dest, sizeof(uv_stream_t*));
+    connection->client->session = create_new_session(connection->client->server_dest, client_id);
+    fprintf(stderr, "[INFO] New session created; session_id=[%llu]\n", connection->client->session.client_id);
 
-        uv_read_start(req->handle, alloc_cb, on_read);
+    uv_handle_set_data((uv_handle_t*)req->handle, (void*)&connection->client->session);
+    fprintf(stderr, "[INFO] Session attached to uv_handle; session_id=[%llu]\n", connection->client->session.client_id);
 
-        FREE(req);
-    }
+    uv_async_init(connection->client->event_loop, &async_write_event.event, async_send);
+    uv_sem_init(&async_write_event.event_sem, 1U);
+    // this makes possible to rise callbacks from different threads
+    // in thread safe manner
+    uv_async_init(connection->client->event_loop, &async_close_connection, async_close);
+    uv_async_init(connection->client->event_loop, &async_stop_networking,  async_stop);
+
+    uv_read_start(req->handle, alloc_cb, on_read);
+
+    FREE(req);
 }
 
 void on_acceptance(uv_stream_t* server_endpoint, int status) {
     if (status < 0) {
-        fprintf (stderr, "Connection error\n");
+        fprintf (stderr, "[FATAL] Connection error, bad status; status=[%d]\n", status);
         return;
     }
 
     uv_tcp_t* client_endpoint = CALLOC(1, uv_tcp_t);
     uv_tcp_init(server_endpoint->loop, client_endpoint);
 
+    uint64_t client_id = hash_djb2_data((void*)(&client_endpoint), sizeof(uv_stream_t*));
+    chat_session_t* session = add_new_session(connection->server->active_sessions,
+                                                 (uv_stream_t*)client_endpoint,
+                                                  client_id);
+    fprintf(stderr, "[INFO] New session created; session_id=[%llu]\n", session->client_id);
+
     int accept_stat = uv_accept(server_endpoint, (uv_stream_t*)client_endpoint);
-
-    if (!accept_stat) {
-        #ifdef DEBUG_VERSION
-            struct sockaddr_in addr = {0};
-            int namelen = 0;
-            uv_tcp_getpeername(client_endpoint, (struct sockaddr*)&addr, &namelen);
-
-            fprintf(stderr, "New connection!\n");
-            fprintf(stderr, "IP address:   %s\n", inet_ntoa(addr.sin_addr));
-        #endif
-
-        // this makes possible to rise callbacks from different threads 
-        // in thread safe manner
-        uv_async_init(connection->server->event_loop, &async_close_connection, async_close);
-        uv_async_init(connection->server->event_loop, &async_stop_networking,  async_stop);
-        uv_async_init(connection->server->event_loop, &async_send_message,     async_send);
-
-        uv_read_start((uv_stream_t*)client_endpoint, alloc_cb, on_read);
-    }
-    else {
-        fprintf (stderr, "Error On Accept, %s\n", uv_strerror(accept_stat));
+    if (accept_stat) {
+        fprintf (stderr, "[FATAL] Failed to accept new connection; session_id=[%llu]\n", session->client_id);
         uv_close((uv_handle_t*)client_endpoint, on_close_connection);
+        return;
     }
+
+    uv_handle_t* session_handle = (uv_handle_t*)client_endpoint;
+    uv_handle_set_data(session_handle, (void*)session);
+    fprintf(stderr, "[INFO] Session attached to uv_handle; session_id=[%llu]\n", session->client_id);
+
+    uv_read_start((uv_stream_t*)client_endpoint, alloc_cb, on_read);
 }
 
 
@@ -286,8 +266,21 @@ ERR_STAT run_networking(server_t* server, const char* ip, size_t port) {
         return ERR_STAT::LISTEN_ERR;
     }
 
+    fprintf(stderr, "[INFO] Init libuv callbacks to invoke thread-safe\n");
+    int init_send = uv_async_init(connection->server->event_loop, &async_write_event.event, async_send);
+    uv_sem_init(&async_write_event.event_sem, 1U);
+
+    int init_close = uv_async_init(connection->server->event_loop, &async_close_connection, async_close);
+    int init_stop = uv_async_init(connection->server->event_loop, &async_stop_networking,  async_stop);
+
+    if (init_send != 0 || init_close != 0 || init_stop != 0) {
+        fprintf(stderr, "[FATAL] Failed register async event callbacks to invoke event_loop\n");
+        return ERR_STAT::LIBUV_ERROR;
+    }
+
+    fprintf(stderr, "<<<<<<     Server start listening on port: [%lu]    >>>>>>\n", port);
     int run_stat = uv_run(event_loop, UV_RUN_DEFAULT);
-    
+
     if (run_stat < 0) {
         fprintf(stderr, "<<<<<<     Error on event loop exit     >>>>>>\n");
         fprintf(stderr, "%s\n\n",   uv_strerror(run_stat));
@@ -316,8 +309,6 @@ ERR_STAT run_networking(client_t* client, const char* ip, size_t port) {
 
         return ERR_STAT::CONNECT_ERR;
     }
-
-    client->server_dest = (uv_stream_t*)server_endpoint;
 
     int run_stat = uv_run(event_loop, UV_RUN_DEFAULT);
 

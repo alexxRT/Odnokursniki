@@ -5,11 +5,13 @@
 #include "memory.h"
 #include "networking.h"
 #include "list_debug.h"
+#include "sender.h"
+#include <thread>
 
 
 #ifdef DEBUG_VERSION
     #define FPRINTF(...) fprintf(stderr, __VA_ARGS__)
-#else 
+#else
     #define FPRINTF(...) (void*)0
 #endif
 
@@ -48,8 +50,8 @@
 // I need two types of clients :  one for storing on server, second for client_obj - states for client.cpp
 
 
-// to do: 
-// client interface 
+// to do:
+// client interface
 // ?? backend & frontend connection ??
 
 //for client backend
@@ -59,32 +61,20 @@ client_t* create_client() {
     client_t* client = CALLOC(1, client_t);
 
     client->incoming_msg = new ts_list(10);
-    client->outgoing_msg = new ts_list(10);
-    
+
     client->status     = STATUS::ONLINE;
     client->name_hash  = 0;
     client->event_loop = NULL;
-    
+
     return client;
 }
 
 void destroy_client(client_t* client) {
     delete client->incoming_msg;
-    delete client->outgoing_msg;
 
     FREE(client);
 }
 
-void call_sender_finalization(client_t* client) {
-    assert(client);
-
-    chat_message_t msg = create_chat_message(MSG_TYPE::SYSTEM);
-    msg.sys_command = COMMAND::SHUTDOWN_SEND;
-
-    client->outgoing_msg->insert_head(msg);
-
-    return;
-}
 
 void call_networking_finalization(client_t* client) {
     assert(client);
@@ -108,7 +98,7 @@ void* start_client_interface(void* args) {
         client->incoming_msg->delete_head();
 
         if (msg.sys_command == COMMAND::CHANGED_STAT) {
-            
+
         }
 
         if (msg.msg_type == MSG_TYPE::TXT_MSG) {
@@ -119,17 +109,16 @@ void* start_client_interface(void* args) {
             fprintf(stderr, "Disconnect confirmed!\n");
             client->status = STATUS::OFFLINE;
 
-            call_sender_finalization(client);
             call_networking_finalization(client);
 
             continue;
         }
 
-        #ifdef DEBUG_VERSION
-            fprintf (stderr, "Client Message Recieved!\n");
-            fprintf (stderr, "Message Type: %lu\n", msg.msg_type);
-        #endif
-        
+        if (msg.msg_type == MSG_TYPE::ERROR_MSG) {
+            fprintf(stderr, "[SERVER] command=[%d]; status=[%d]; verbose=[%s]\n",
+                        msg.sys_command, msg.error_stat, msg.msg_body);
+        }
+
     }
 
 
@@ -163,10 +152,10 @@ const char* COMMANDS[] = {
 size_t get_cmd_code(const char* input) {
     if (!strcmp(input, COMMANDS[0]))
         return 0;
-    
+
     if (!strcmp(input, COMMANDS[1]))
         return 1;
-    
+
     if (!strcmp(input, COMMANDS[2]))
         return 2;
 
@@ -182,7 +171,7 @@ void print_available_commands() {
     }
 }
 
-char my_name[NAME_SIZE] = {0}; 
+char my_name[NAME_SIZE] = {0};
 char my_pswd[PSWD_SIZE] = {0};
 char server_name[NAME_SIZE] = {0};
 
@@ -190,20 +179,24 @@ void* front_for_test_only(void* args) {
     thread_args* thr_arg = (thread_args*)args;
     client_t* client = (client_t*)thr_arg->owner_struct;
 
+    fprintf(stderr, "[INFO] Initilizing test terminal UI\n");
+    std::this_thread::sleep_for(std::chrono::seconds(1));
+
     fprintf(stderr, "Input Your Command\n");
     fprintf(stderr, "Available Commands:\n");
     print_available_commands();
 
     while (1) {
         fprintf(stderr, ":  ");
-        char input[10] = {0}; 
+        char input[10] = {0};
+        fflush(stdin);
         fscanf(stdin, "%s", input);
 
         size_t CMD_CODE = get_cmd_code(input);
         bzero(input, 10);
 
         assert(CMD_CODE != 4);
-        
+
         switch (CMD_CODE) {
             case 0: {
                 char name[NAME_SIZE] = {0};
@@ -212,7 +205,7 @@ void* front_for_test_only(void* args) {
 
                 char msg_body[MSG_SIZE] = {0};
                 fprintf(stderr, "input your message: ");
-                get_msg(msg_body);
+                fscanf(stdin, "%s", msg_body);
 
                 buffer_t* buffer = create_type_buffer(MSG_TYPE::TXT_MSG);
                 fill_body(buffer, name, NAME_SIZE);
@@ -223,15 +216,7 @@ void* front_for_test_only(void* args) {
 
                 chat_message_t msg = create_chat_message(MSG_TYPE::TXT_MSG);
                 msg.read_message(&msg, buffer);
-
-                #ifdef DEBUG_VERSION
-                    // fprintf(stderr, "msg type [%lu]\n", msg.msg_type);
-                    // fprintf(stderr, "msg from: [%s]\n", msg.from);
-                    // fprintf(stderr, "msg to: [%s]\n", msg.to);
-                    // print_msg_body(&msg);
-                #endif
-            
-                client->outgoing_msg->insert_head(msg);
+                send_message(client, &msg);
             }
             break;
 
@@ -243,7 +228,7 @@ void* front_for_test_only(void* args) {
                 fscanf(stdin, "%s", my_pswd);
 
                 buffer_t* buffer = create_type_buffer(MSG_TYPE::SYSTEM);
-                
+
                 fill_body(buffer, server_name,  NAME_SIZE);
                 fill_body(buffer, my_name, NAME_SIZE);
 
@@ -259,14 +244,7 @@ void* front_for_test_only(void* args) {
                 msg.read_message(&msg, buffer);
 
                 destroy_type_buffer(buffer);
-
-                #ifdef DEBUG_VERSION
-                    // fprintf(stderr, "msg type [%lu]\n", msg.msg_type);
-                    // fprintf(stderr, "msg from: [%s]\n", msg.from);
-                    // fprintf(stderr, "msg to: [%s]\n", msg.to);
-                    // print_msg_body(&msg);
-                #endif
-                client->outgoing_msg->insert_head(msg);
+                send_message(client, &msg);
             }
             break;
 
@@ -288,23 +266,11 @@ void* front_for_test_only(void* args) {
                 fill_body(buffer, my_name, NAME_SIZE);
                 fill_body(buffer, my_pswd, PSWD_SIZE);
 
-                //print_buffer(buffer, 0);
-
                 chat_message_t msg = create_chat_message(MSG_TYPE::SYSTEM);
                 msg.read_message(&msg, buffer);
 
-                //fprintf(stderr, "[%s]\n", msg.msg_body + NAME_SIZE);
-
                 destroy_type_buffer(buffer);
-
-                #ifdef DEBUG_VERSION
-                    // fprintf(stderr, "msg type [%lu]\n", msg.msg_type);
-                    // fprintf(stderr, "msg from: [%s]\n", msg.from);
-                    // fprintf(stderr, "msg to: [%s]\n", msg.to);
-                    // print_msg_body(&msg);
-                #endif
-
-                client->outgoing_msg->insert_head(msg);
+                send_message(client, &msg);
             }
             break;
 
@@ -317,22 +283,12 @@ void* front_for_test_only(void* args) {
                 COMMAND command = COMMAND::LOG_OUT;
                 fill_body(buffer, (void*)&command, sizeof(COMMAND));
                 fill_body(buffer, my_name, NAME_SIZE);
-        
-                //print_buffer(buffer, 0);
 
                 chat_message_t msg = create_chat_message(MSG_TYPE::SYSTEM);
                 msg.read_message(&msg, buffer);
 
                 destroy_type_buffer(buffer);
-
-                #ifdef DEBUG_VERSION
-                    // fprintf(stderr, "msg type [%lu]\n", msg.msg_type);
-                    // fprintf(stderr, "msg from: [%s]\n", msg.from);
-                    // fprintf(stderr, "msg to: [%s]\n", msg.to);
-                    // print_msg_body(&msg);
-                #endif
-
-                client->outgoing_msg->insert_head(msg);
+                send_message(client, &msg);
             }
             break;
         }
@@ -349,7 +305,7 @@ void run_client_backend(client_t* client, size_t port, const char* ip) {
     args.owner        = OWNER::CLIENT;
     args.owner_struct = (void*)client;
     args.ip_addr      = ip;
-    args.port         = port; 
+    args.port         = port;
 
     pthread_t thread_id[THREAD_NUM];
 
@@ -359,9 +315,8 @@ void run_client_backend(client_t* client, size_t port, const char* ip) {
 
     pthread_create(&thread_id[0], NULL, start_networking,       (void*)&args);
     pthread_create(&thread_id[1], NULL, start_client_interface, (void*)&args);
-    pthread_create(&thread_id[2], NULL, start_sender,           (void*)&args);
-    pthread_create(&thread_id[3], NULL, front_for_test_only,    (void*)&args);
-    
+    pthread_create(&thread_id[2], NULL, front_for_test_only,    (void*)&args);
+
     for (int i = THREAD_NUM - 1; i >= 0; i --) {
         pthread_join(thread_id[i], NULL);
     }

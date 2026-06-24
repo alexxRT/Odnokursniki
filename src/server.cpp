@@ -1,10 +1,8 @@
 #include "chat_base.h"
 #include "messages.h"
 #include "server.h"
-#include "threads_safe.h"
 #include "chat_configs.h"
 #include "networking.h"
-#include "list_debug.h"
 #include "sender.h"
 #include <unistd.h>
 #include <iostream>
@@ -86,8 +84,8 @@ server_t* create_server(size_t client_num) {
         server->active_sessions[i].state = CLIENT_STATE::DISCONNECTED;
     }
 
-    server->incoming_msg = new ts_list(10);
-    server->outgoing_msg = new ts_list(10);
+    server->incoming_msg = new ThreadSafeList<chat_message_t>(10);
+    server->outgoing_msg = new ThreadSafeList<chat_message_t>(10);
 
     return server;
 }
@@ -381,7 +379,7 @@ int close_all_active_connections(server_t* server) {
 }
 
 void* start_interface(void* args) {
-    thread_args* thr_args = (thread_args*)args;
+    thread_args_t* thr_args = (thread_args_t*)args;
     server_t* server = (server_t*)(thr_args->owner_struct);
 
     char server_name[NAME_SIZE] = {0};
@@ -427,12 +425,12 @@ void* start_interface(void* args) {
 
 void run_server_backend(server_t* server, const char* ip_address, size_t port) {
     pthread_t   pid[THREAD_NUM];
-    thread_args args = {};
+    thread_args_t args = {};
 
-    args.ip_addr      = ip_address;
-    args.port         = port;
     args.owner_struct = (void*)server;
     args.owner        = OWNER::SERVER;
+    args.port         = port;
+    args.ip           = ip_address;
 
     #ifdef DEBUG_VERSION
         InitLogFile("../log_server.txt");

@@ -3,7 +3,7 @@
 
 #include "chat_configs.h"
 #include "chat_session.h"
-#include "threads_safe.h"
+#include "ts_list.h"
 #include "chat_base.h"
 #include "list.h"
 #include "uv.h"
@@ -48,8 +48,8 @@ enum BROADCAST : int {
 typedef struct server_ {
     SERVER_STATUS status;
     chat_base_t* client_base;
-    ts_list* incoming_msg;
-    ts_list* outgoing_msg;
+    ThreadSafeList<chat_message_t>* incoming_msg;
+    ThreadSafeList<chat_message_t>* outgoing_msg;
     uv_loop_t* event_loop;
     chat_session_t active_sessions[MAX_SESSIONS_COUNT];
 }server_t;

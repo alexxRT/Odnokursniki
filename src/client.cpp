@@ -60,7 +60,7 @@
 client_t* create_client() {
     client_t* client = CALLOC(1, client_t);
 
-    client->incoming_msg = new ts_list(10);
+    client->incoming_msg = new ThreadSafeList<chat_message_t>(10);
 
     client->status     = STATUS::ONLINE;
     client->name_hash  = 0;
@@ -300,11 +300,11 @@ void* front_for_test_only(void* args) {
 
 
 void run_client_backend(client_t* client, size_t port, const char* ip) {
-    thread_args args = {};
+    thread_args_t args = {};
 
     args.owner        = OWNER::CLIENT;
     args.owner_struct = (void*)client;
-    args.ip_addr      = ip;
+    args.ip           = ip;
     args.port         = port;
 
     pthread_t thread_id[THREAD_NUM];

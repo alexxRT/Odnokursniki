@@ -31,6 +31,13 @@ enum class OWNER {
 
 const int THREAD_NUM = 4;
 
+typedef struct thread_args {
+    void* owner_struct;
+    OWNER owner;
+    const char* ip;
+    size_t port;
+} thread_args_t;
+
 enum class ERR_STAT : uint64_t{
     SUCCESS          = 0,
     CONNECTION_LOST  = 1,

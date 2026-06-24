@@ -3,20 +3,16 @@
 
 #include <uv.h>
 #include "chat_configs.h"
-#include "list.h"
-#include "threads_safe.h"
 #include "chat_session.h"
+#include "ts_list.h"
 
 typedef struct client_ {
     STATUS       status;
     uint64_t     name_hash;
     uv_stream_t* server_dest;
     uv_loop_t*   event_loop;
-
-    ts_list* incoming_msg;
-
+    ThreadSafeList<chat_message_t>* incoming_msg;
     chat_session_t session;
-
 } client_t;
 
 

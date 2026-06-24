@@ -2,7 +2,6 @@
 #include "client.h"
 #include "server.h"
 #include "chat_configs.h"
-#include "threads_safe.h"
 #include "memory.h"
 
 #include <thread>
@@ -323,7 +322,7 @@ ERR_STAT run_networking(client_t* client, const char* ip, size_t port) {
 }
 
 void* start_networking(void* args) {
-    thread_args* backend_params = (thread_args*)args;
+    thread_args* backend_params = (thread_args_t*)args;
 
     create_connection(backend_params->owner);
 
@@ -331,11 +330,11 @@ void* start_networking(void* args) {
 
     if (connection->owner == OWNER::CLIENT) {
         connection->client = (client_t*)backend_params->owner_struct;
-        backend_stat = run_networking(connection->client, backend_params->ip_addr, backend_params->port);
+        backend_stat = run_networking(connection->client, backend_params->ip, backend_params->port);
     }
     else {
         connection->server = (server_t*)backend_params->owner_struct;
-        backend_stat = run_networking(connection->server, backend_params->ip_addr, backend_params->port);
+        backend_stat = run_networking(connection->server, backend_params->ip, backend_params->port);
     }
 
     fprintf(stderr, "<<<<<<     Networking finalization     >>>>>>\n");

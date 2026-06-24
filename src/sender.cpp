@@ -1,9 +1,7 @@
-#include "threads_safe.h"
 #include "sender.h"
 #include "messages.h"
 #include "memory.h"
-#include "list.h"
-#include "list_debug.h"
+#include "networking.h"
 
 enum class SENDER_STATUS : int {
     ACTIVE,

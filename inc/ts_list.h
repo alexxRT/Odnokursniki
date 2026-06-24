@@ -1,26 +1,19 @@
-#ifndef THREADS_SAFE_LIST
-#define THREADS_SAFE_LIST
+#ifndef THREADS_SAFE_LIST_MESSAGES
+#define THREADS_SAFE_LIST_MESSAGES
 
 #include <errno.h>
 #include <pthread.h>
-#include "list.h"
-#include "list_debug.h"
-#include "chat_configs.h"
-#include "networking.h"
 #include <mutex>
 
+#include "messages.h"
+#define USER_DTYPE chat_message_t
+#include "list.h"
+#include "list_debug.h"
 
-typedef struct thread_args_ {
-    OWNER owner;
-    void* owner_struct;
-    const char* ip_addr;
-    size_t port;
-}thread_args;
-
-class ts_list
-{
+template <typename ListDataT>
+class ThreadSafeList {
     public:
-    ts_list(size_t num_elem){
+    ThreadSafeList(size_t num_elem){
         LIST_ERR_CODE err_code = ListInit(&list, num_elem);
 
         if (err_code != LIST_ERR_CODE::SUCCESS){
@@ -34,7 +27,7 @@ class ts_list
         }
     };
 
-    ~ts_list() {
+    ~ThreadSafeList() {
         LIST_ERR_CODE err_code = ListDestroy(&list);
 
         if (err_code != LIST_ERR_CODE::SUCCESS){
@@ -48,7 +41,7 @@ class ts_list
         }
     };
 
-    void insert_head(list_data_t item) {
+    void insert_head(ListDataT item) {
         std::scoped_lock lock(mx_list);
         LIST_ERR_CODE err_code = ListInsertHead(&list, item);
 
@@ -63,7 +56,7 @@ class ts_list
         update.notify_one();
     };
 
-    void insert(list_data_t item, size_t pos) {
+    void insert(ListDataT item, size_t pos) {
         std::scoped_lock lock(mx_list);
         LIST_ERR_CODE err_code = ListInsert(&list, pos, item);
 
@@ -113,7 +106,7 @@ class ts_list
         return list.size;
     };
 
-    list_elem* get_elem(size_t pos) {
+    list_elem_t<ListDataT>* get_elem(size_t pos) {
         std::scoped_lock lock(mx_list);
 
         size_t indx = GetElemIndex(&list, pos);
@@ -124,7 +117,7 @@ class ts_list
         return NULL;
     }
 
-    list_elem* get_head() {
+    list_elem_t<ListDataT>* get_head() {
         std::scoped_lock lock(mx_list);
 
         // head elem position = 1
@@ -132,7 +125,7 @@ class ts_list
 
         if (indx >= 0)
             return ELEM(&list, indx);
-        
+
         return NULL;
     }
 
@@ -145,10 +138,10 @@ class ts_list
 
     protected:
     std::mutex mx_list;
-    my_list list;
+    list_t<ListDataT> list;
 
     std::condition_variable update;
     std::mutex mx_update;
 };
 
-#endif //THREADS_SAFE_LIST
+#endif //THREADS_SAFE_LIST_MESSAGES

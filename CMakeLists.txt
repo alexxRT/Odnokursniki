@@ -60,3 +60,10 @@ target_include_directories(server       PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/inc)
 target_link_libraries(client       PUBLIC uv_a chat_msg list)
 #target_include_directories(client PUBLIC ${LIBUV_INCLUDE} ${CMAKE_CURRENT_SOURCE_DIR}/inc)
 target_include_directories(client PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/inc)
+
+# ==> ncurses GUI example
+find_package(Curses REQUIRED)
+
+add_executable(win window.cpp)
+target_link_libraries(win       PUBLIC uv_a chat_msg list ${CURSES_LIBRARIES})
+target_include_directories(win  PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/inc)

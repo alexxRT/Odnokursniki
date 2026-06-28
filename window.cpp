@@ -5,6 +5,19 @@
 #include "inc/ts_list.h"
 #include "inc/gui.h"
 
+
+enum STATE {
+    MAIN = 0,
+    SIGN_IN_PROMPT = 1,
+    REG_PROMPT = 2
+};
+typedef struct enter_win_state {
+    STATE state;
+    size_t size;
+    int light_idx;
+} enter_win_state_t;
+
+
 FILE* logerr = NULL;
 #define stderr logerr
 
@@ -115,6 +128,26 @@ void scene_render(gui_scene_t* scene) {
                 };
                 scene->pending_events->insert_head(resize_event);
             }
+        } else if (ch == KEY_UP) {
+            gui_event_t arrow_up_event = {
+                .event_id = GUI_EVENT::ARROW_UP
+            };
+            scene->pending_events->insert_head(arrow_up_event);
+        } else if (ch == KEY_DOWN) {
+            gui_event_t arrow_down_event = {
+                .event_id = GUI_EVENT::ARROW_DOWN
+            };
+            scene->pending_events->insert_head(arrow_down_event);
+        } else if (ch == KEY_LEFT) {
+            gui_event_t arrow_left_event = {
+                .event_id = GUI_EVENT::ARROW_LEFT
+            };
+            scene->pending_events->insert_head(arrow_left_event);
+        } else if (ch == 10) {
+            gui_event_t enter_event = {
+                .event_id = GUI_EVENT::ENTER,
+            };
+            scene->pending_events->insert_head(enter_event);
         }
         handle_pending_events(scene);
     }
@@ -140,40 +173,104 @@ int schedule_scene_events(gui_event_t* event) {
     return unknown_event_indx;
 }
 
+void print_y_centered(window_t* window, const char* label, int pos_y) {
+    int center_x = (window->size.width - strlen(label)) / 2;
+    center_x = center_x < 0 ? 0 : center_x;
+    mvwprintw (window->win, pos_y, center_x, label);
+}
+
 void draw_enter_window(window_t* window) {
     werase(window->win);
     box(window->win, 0, 0);
 
     int header_y = 1;
-    int header_x = (window->size.width - strlen("ODNOKURSNIKI")) / 2;
-    header_x = header_x < 0 ? 0 : header_x;
-    mvwprintw (window->win, header_y, header_x, "ODNOKURSNIKI");
-
+    print_y_centered(window, "ODNOKURSNIKI", header_y);
     header_y += 1;
-    header_x = (window->size.width - strlen("SIGN IN/REGISTER?")) / 2;
-    header_x = header_x < 0 ? 0 : header_x;
-    mvwprintw (window->win, header_y, header_x, "SIGN IN/REGISTER?");
+    print_y_centered(window, "SIGN IN/REGISTER?", header_y);
 
     int bottom_option_y = window->size.hight - 3;
-    int bottom_option_x = (window->size.width - strlen("SIGN_IN")) / 2;
-    bottom_option_x = bottom_option_x < 0 ? 0 : bottom_option_x;
-    mvwprintw (window->win, bottom_option_y, bottom_option_x, "SIGN IN");
-
+    print_y_centered(window, "SIGN IN", bottom_option_y);
     bottom_option_y += 1;
-    bottom_option_x = (window->size.width - strlen("REGISTER")) / 2;
-    bottom_option_x = bottom_option_x < 0 ? 0 : bottom_option_x;
-    mvwprintw (window->win, bottom_option_y, bottom_option_x, "REGISTER");
+    print_y_centered(window, "REGISTER", bottom_option_y);
 
     wrefresh(window->win);
 }
 
+void draw_enter_window_sign_in(window_t* window) {
+    werase(window->win);
+    box(window->win, 0, 0);
+
+    int header_y = 1;
+    print_y_centered(window, "ODNOKURSNIKI", header_y);
+    header_y += 1;
+    print_y_centered(window, "SIGN IN/REGISTER?", header_y);
+
+    int bottom_option_y = window->size.hight - 3;
+    wattron(window->win, A_REVERSE);
+        print_y_centered(window, "SIGN IN", bottom_option_y);
+    wattroff(window->win, A_REVERSE);
+    bottom_option_y += 1;
+    print_y_centered(window, "REGISTER", bottom_option_y);
+
+    wrefresh(window->win);
+}
+
+void draw_enter_window_register(window_t* window) {
+    werase(window->win);
+    box(window->win, 0, 0);
+
+    int header_y = 1;
+    print_y_centered(window, "ODNOKURSNIKI", header_y);
+    header_y += 1;
+    print_y_centered(window, "SIGN IN/REGISTER?", header_y);
+
+    int bottom_option_y = window->size.hight - 3;
+    print_y_centered(window, "SIGN IN", bottom_option_y);
+    bottom_option_y += 1;
+    wattron(window->win, A_REVERSE);
+        print_y_centered(window, "REGISTER", bottom_option_y);
+    wattroff(window->win, A_REVERSE);
+
+    wrefresh(window->win);
+}
+
+void draw_prompt_register(window_t* window) {
+    werase(window->win);
+    box(window->win, 0, 0);
+
+    int header_y = 1;
+    print_y_centered(window, "ODNOKURSNIKI", header_y);
+    header_y += 1;
+    print_y_centered(window, "CREATE AN ACCOUNT!", header_y);
+
+    int bottom_option_y = window->size.hight - 3;
+    mvwprintw(window->win, bottom_option_y, 2, "ENTER NAME:");
+    bottom_option_y += 1;
+    mvwprintw(window->win, bottom_option_y, 2, "ENTER PASSWORD:");
+
+    wrefresh(window->win);
+}
+
+void draw_prompt_sign_in(window_t* window) {
+    werase(window->win);
+    box(window->win, 0, 0);
+
+    int header_y = 1;
+    print_y_centered(window, "ODNOKURSNIKI", header_y);
+    header_y += 1;
+    print_y_centered(window, "WELCOME BACK!", header_y);
+
+    int bottom_option_y = window->size.hight - 3;
+    mvwprintw(window->win, bottom_option_y, 2, "NAME:");
+    bottom_option_y += 1;
+    mvwprintw(window->win, bottom_option_y, 2, "PASSWORD:");
+
+    wrefresh(window->win);
+}
+
+
 bool handle_resize_event(gui_scene_t* scene, gui_event_t* event) {
-    assert(event->event_id == GUI_EVENT::RESIZE && "Handle resize event id mismatch");
-    assert(scene && "Scene nullptr when handling resize event");
-
     window_t* enter_window = &scene->windows[0];
-
-    assert(enter_window->win && "Enter win is NULL in handle resize event");
 
     int screen_hight = event->scene_hight;
     int screen_width = event->scene_width;
@@ -194,7 +291,21 @@ bool handle_resize_event(gui_scene_t* scene, gui_event_t* event) {
     enter_window->position.pos_x = new_x;
     enter_window->position.pos_y = new_y;
 
-    draw_enter_window(enter_window);
+    enter_win_state_t* state = (enter_win_state_t*)enter_window->attrs;
+    switch (state->state) {
+        case STATE::MAIN:
+            draw_enter_window(enter_window);
+            break;
+        case STATE::SIGN_IN_PROMPT:
+            draw_prompt_sign_in(enter_window);
+            break;
+        case STATE::REG_PROMPT:
+            draw_prompt_register(enter_window);
+            break;
+        default:
+            break;
+    }
+
     refresh();
 
     scene->hight = screen_hight;
@@ -210,13 +321,95 @@ bool handle_finalize_event(gui_scene_t* scene, gui_event_t* event) {
 
     window_t* enter_window = &scene->windows[0];
 
-    assert(enter_window->win && "Window nullptr in finalize event");
+    assert(enter_window->win && "Enter window nullptr in finalize event");
 
     terminate_scene(scene);
     endwin();
     return true;
 }
 
+int schedule_window_event(gui_event_t* event) {
+    if (event->event_id == GUI_EVENT::ARROW_UP ||
+        event->event_id == GUI_EVENT::ARROW_DOWN)
+    {
+        const int arrow_pressed_event_idx = 0;
+        fprintf(stderr, "[INFO:ENTER_WINDOW] Scheduled GUI event to handler; index=[%d]\n",
+                    arrow_pressed_event_idx);
+        return arrow_pressed_event_idx;
+    } else if (event->event_id == GUI_EVENT::ENTER) {
+        const int handle_enter_idx = 1;
+        fprintf(stderr, "[INFO:ENTER_WINDOW] Scheduled GUI event to handler; index=[%d]\n",
+                    handle_enter_idx);
+        return handle_enter_idx;
+    } else if (event->event_id == GUI_EVENT::ARROW_LEFT) {
+        const int handle_exit_idx = 2;
+        fprintf(stderr, "[INFO:ENTER_WINDOW] Scheduled GUI event to handler; index=[%d]\n",
+                    handle_exit_idx);
+        return handle_exit_idx;
+    }
+    const int unknown_event_indx = -1;
+    fprintf(stderr, "[WARNING:ENTER_WINDOW] Unknown event id, event ignored; event_id=[%llu]\n", event->event_id);
+    return unknown_event_indx;
+}
+
+bool handle_arrow_event(gui_scene_t* scene, gui_event_t* event) {
+    window_t* enter_window = scene->windows;
+    enter_win_state_t* state = (enter_win_state_t*)enter_window->attrs;
+
+    if (state->state != STATE::MAIN) {
+        return true;
+    }
+
+    if (event->event_id == GUI_EVENT::ARROW_UP) {
+        state->light_idx += 1;
+        state->light_idx = state->light_idx >= state->size ? 0 : state->light_idx; // handle overflow
+    }
+    else {
+        state->light_idx -= 1;
+        state->light_idx = state->light_idx < 0 ? 1 : state->light_idx; // handle overflow
+    }
+
+    if (state->light_idx == 0) {
+        draw_enter_window_sign_in(enter_window);
+        return true;
+    }
+
+    if (state->light_idx == 1) {
+        draw_enter_window_register(enter_window);
+        return true;
+    }
+    return false;
+}
+
+bool handle_enter_event(gui_scene_t* scene, gui_event_t* event) {
+    window_t* enter_window = scene->windows;
+    enter_win_state_t* state = (enter_win_state_t*)enter_window->attrs;
+
+    if (state->state != STATE::MAIN)
+        return true;
+
+    if (state->light_idx == 0) {
+        draw_prompt_sign_in(enter_window);
+        state->state = STATE::SIGN_IN_PROMPT;
+        return true;
+    }
+
+    draw_prompt_register(enter_window);
+    state->state = STATE::REG_PROMPT;
+    return true;
+}
+
+bool handle_exit_event(gui_scene_t* scene, gui_event_t* event) {
+    window_t* enter_window = scene->windows;
+    enter_win_state_t* state = (enter_win_state_t*)enter_window->attrs;
+
+    if (state->state == STATE::MAIN)
+        return true;
+
+    draw_enter_window(enter_window);
+    state->state = STATE::MAIN;
+    return true;
+}
 
 gui_scene_t* create_enter_scene() {
     if (initscr() == NULL) {
@@ -242,7 +435,7 @@ gui_scene_t* create_enter_scene() {
     enter_scene->width = screen_width;
 
     int enter_win_height = 10;
-    int enter_win_width  = 30;
+    int enter_win_width  = 50;
 
     int pos_x = (screen_width - enter_win_width) / 2;
     int pos_y = (screen_height - enter_win_height) / 2;
@@ -256,15 +449,23 @@ gui_scene_t* create_enter_scene() {
         .position = {pos_x, pos_y},
         .size     = {enter_win_width, enter_win_height}
     };
-    uv_mutex_init(&enter_scene->windows[0].win_mutex);
+
+    enter_win_state_t* win_state = CALLOC(1, enter_win_state_t);
+    win_state->state = STATE::MAIN;
+    win_state->light_idx = 0;
+    win_state->size = 2;
+    enter_scene->windows[0].attrs = (void*)win_state;
+    enter_scene->windows[0].event_scheduler   = schedule_window_event;
+    enter_scene->windows[0].event_handlers[0] = handle_arrow_event;
+    enter_scene->windows[0].event_handlers[1] = handle_enter_event;
+    enter_scene->windows[0].event_handlers[2] = handle_exit_event;
+    for (size_t i = 0; i < MAX_WINDOWS; i ++)
+        uv_mutex_init(&enter_scene->windows[i].win_mutex);
 
     refresh();
     draw_enter_window(&enter_scene->windows[0]);
 
-    // set scene event scheduler
-    enter_scene->event_scheduler = schedule_scene_events;
-
-    // set scene event handlers
+    enter_scene->event_scheduler   = schedule_scene_events;
     enter_scene->event_handlers[0] = handle_resize_event;
     enter_scene->event_handlers[1] = handle_finalize_event;
 
@@ -277,7 +478,6 @@ void run_gui_app() {
     if (!enter_scene)
         return;
 
-    pthread_t pid;
     scene_render(enter_scene);
 
     delete enter_scene->pending_events;

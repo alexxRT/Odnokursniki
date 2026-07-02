@@ -4,6 +4,7 @@
 #include <ncurses.h>
 #include <cstdint>
 #include <uv.h>
+#include "client.h"
 
 template <typename ListDataT>
 class ThreadSafeList;
@@ -11,6 +12,19 @@ class ThreadSafeList;
 
 const int MAX_WINDOWS = 10;
 const int MAX_WIN_HANDLERS = 10;
+const int MAX_INPUT_LEN = 256;
+
+enum SceneKind {
+    SCENE_KIND_ENTER = 0,
+    SCENE_KIND_CHAT  = 1
+};
+
+enum SceneResult {
+    SCENE_RESULT_CONTINUE      = 0,
+    SCENE_RESULT_EXIT          = 1,
+    SCENE_RESULT_ENTER_CHAT    = 2,
+    SCENE_RESULT_BACK_TO_ENTER = 3
+};
 
 enum GUI_EVENT {
     FINALIZE   = 0,
@@ -22,10 +36,10 @@ enum GUI_EVENT {
 };
 
 typedef struct gui_event {
-    // something add later
     uint64_t event_id;
     int scene_width;
     int scene_hight;
+    int ch;
 } gui_event_t;
 
 typedef struct posistion {
@@ -68,6 +82,12 @@ typedef struct gui_scene {
 
     int hight;
     int width;
+
+    SceneKind scene_kind;
+    SceneResult result;
+    void* scene_attrs;
+
+    client_t* client;
 } gui_scene_t;
 
 typedef struct event_thread_args {

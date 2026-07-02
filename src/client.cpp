@@ -63,16 +63,16 @@ client_t* create_client() {
     client->incoming_msg = new ThreadSafeList<chat_message_t>(10);
 
     client->status     = STATUS::ONLINE;
-    client->name_hash  = 0;
     client->event_loop = NULL;
 
     return client;
 }
 
-void destroy_client(client_t* client) {
-    delete client->incoming_msg;
+void set_client_username(client_t* client, const char* username) {
+    size_t username_len = strlen(username);
+    username_len = username_len > NAME_SIZE ? NAME_SIZE : username_len;
 
-    FREE(client);
+    memmove(client->username, username, username_len);
 }
 
 
@@ -85,221 +85,15 @@ void call_networking_finalization(client_t* client) {
     }
 }
 
-void* start_client_interface(void* args) {
-    thread_args* client_args = (thread_args*)args;
-    client_t* client = (client_t*)client_args->owner_struct;
 
-    fprintf(stderr, "<<<<<<     Client Interface Started     >>>>>>\n");
+void destroy_client(client_t* client) {
+    call_networking_finalization(client);
+    delete client->incoming_msg;
 
-    while (client->status == STATUS::ONLINE) {
-        client->incoming_msg->wait();
-
-        chat_message_t msg = client->incoming_msg->get_head()->data;
-        client->incoming_msg->delete_head();
-
-        if (msg.sys_command == COMMAND::CHANGED_STAT) {
-
-        }
-
-        if (msg.msg_type == MSG_TYPE::TXT_MSG) {
-            fprintf(stderr, "from %s: %s\n", msg.from, msg.msg_body);
-        }
-
-        if (msg.sys_command == COMMAND::ON_CLOSE) {
-            fprintf(stderr, "Disconnect confirmed!\n");
-            client->status = STATUS::OFFLINE;
-
-            call_networking_finalization(client);
-
-            continue;
-        }
-
-        if (msg.msg_type == MSG_TYPE::ERROR_MSG) {
-            fprintf(stderr, "[SERVER] command=[%d]; status=[%d]; verbose=[%s]\n",
-                        msg.sys_command, msg.error_stat, msg.msg_body);
-        }
-
-    }
-
-
-    fprintf(stderr, "<<<<<<     Interface Finalization     >>>>>>\n");
-
-    pthread_exit(NULL);
-    return NULL;
+    FREE(client);
 }
 
-void get_msg(char* buf){
-    fflush(stdin);
-
-    char c;
-    int pos = 0;
-
-    while ((c = fgetc(stdin)) != EOF && c != '\n') {
-        buf[pos] = c;
-        pos += 1;
-    }
-    buf[pos] = '\0';
-}
-
-size_t COMMANDS_NUM = 4;
-const char* COMMANDS[] = {
-    "MSG",
-    "LOG_IN",
-    "REG",
-    "OUT"
-};
-
-size_t get_cmd_code(const char* input) {
-    if (!strcmp(input, COMMANDS[0]))
-        return 0;
-
-    if (!strcmp(input, COMMANDS[1]))
-        return 1;
-
-    if (!strcmp(input, COMMANDS[2]))
-        return 2;
-
-    if (!strcmp(input, COMMANDS[3]))
-        return 3;
-
-    return 4;
-}
-
-void print_available_commands() {
-    for (int i = 0; i < COMMANDS_NUM; i ++) {
-        fprintf(stderr, "%s\n", COMMANDS[i]);
-    }
-}
-
-char my_name[NAME_SIZE] = {0};
-char my_pswd[PSWD_SIZE] = {0};
-char server_name[NAME_SIZE] = {0};
-
-void* front_for_test_only(void* args) {
-    thread_args* thr_arg = (thread_args*)args;
-    client_t* client = (client_t*)thr_arg->owner_struct;
-
-    fprintf(stderr, "[INFO] Initilizing test terminal UI\n");
-    std::this_thread::sleep_for(std::chrono::seconds(1));
-
-    fprintf(stderr, "Input Your Command\n");
-    fprintf(stderr, "Available Commands:\n");
-    print_available_commands();
-
-    while (1) {
-        fprintf(stderr, ":  ");
-        char input[10] = {0};
-        fflush(stdin);
-        fscanf(stdin, "%s", input);
-
-        size_t CMD_CODE = get_cmd_code(input);
-        bzero(input, 10);
-
-        assert(CMD_CODE != 4);
-
-        switch (CMD_CODE) {
-            case 0: {
-                char name[NAME_SIZE] = {0};
-                fprintf(stderr, "input addressant name: ");
-                fscanf(stdin, "%s", name);
-
-                char msg_body[MSG_SIZE] = {0};
-                fprintf(stderr, "input your message: ");
-                fscanf(stdin, "%s", msg_body);
-
-                buffer_t* buffer = create_type_buffer(MSG_TYPE::TXT_MSG);
-                fill_body(buffer, name, NAME_SIZE);
-                fill_body(buffer, my_name, NAME_SIZE);
-                fill_body(buffer, msg_body, MSG_SIZE);
-
-                // print_buffer(buffer, 0);
-
-                chat_message_t msg = create_chat_message(MSG_TYPE::TXT_MSG);
-                msg.read_message(&msg, buffer);
-                send_message(client, &msg);
-            }
-            break;
-
-            case 1: {
-                fprintf(stderr, "enter your name: ");
-                fscanf(stdin, "%s", my_name);
-
-                fprintf(stderr, "enter your password: ");
-                fscanf(stdin, "%s", my_pswd);
-
-                buffer_t* buffer = create_type_buffer(MSG_TYPE::SYSTEM);
-
-                fill_body(buffer, server_name,  NAME_SIZE);
-                fill_body(buffer, my_name, NAME_SIZE);
-
-                COMMAND command = COMMAND::LOG_IN;
-                fill_body(buffer, (void*)&command, sizeof(COMMAND));
-
-                fill_body(buffer, my_name, NAME_SIZE);
-                fill_body(buffer, my_pswd, PSWD_SIZE);
-
-                //print_buffer(buffer, 0);
-
-                chat_message_t msg = create_chat_message(MSG_TYPE::SYSTEM);
-                msg.read_message(&msg, buffer);
-
-                destroy_type_buffer(buffer);
-                send_message(client, &msg);
-            }
-            break;
-
-            case 2: {
-                fprintf(stderr, "enter your name: ");
-                fscanf(stdin, "%s", my_name);
-
-                fprintf(stderr, "enter your password: ");
-                fscanf(stdin, "%s", my_pswd);
-
-                buffer_t* buffer = create_type_buffer(MSG_TYPE::SYSTEM);
-
-                fill_body(buffer, server_name,  NAME_SIZE);
-                fill_body(buffer, my_name, NAME_SIZE);
-
-                COMMAND command = COMMAND::REGISTR;
-                fill_body(buffer, (void*)&command, sizeof(COMMAND));
-
-                fill_body(buffer, my_name, NAME_SIZE);
-                fill_body(buffer, my_pswd, PSWD_SIZE);
-
-                chat_message_t msg = create_chat_message(MSG_TYPE::SYSTEM);
-                msg.read_message(&msg, buffer);
-
-                destroy_type_buffer(buffer);
-                send_message(client, &msg);
-            }
-            break;
-
-            case 3: {
-                buffer_t* buffer = create_type_buffer(MSG_TYPE::SYSTEM);
-
-                fill_body(buffer, server_name,  NAME_SIZE);
-                fill_body(buffer, my_name, NAME_SIZE);
-
-                COMMAND command = COMMAND::LOG_OUT;
-                fill_body(buffer, (void*)&command, sizeof(COMMAND));
-                fill_body(buffer, my_name, NAME_SIZE);
-
-                chat_message_t msg = create_chat_message(MSG_TYPE::SYSTEM);
-                msg.read_message(&msg, buffer);
-
-                destroy_type_buffer(buffer);
-                send_message(client, &msg);
-            }
-            break;
-        }
-    }
-
-    pthread_exit(NULL);
-    return NULL;
-}
-
-
-void run_client_backend(client_t* client, size_t port, const char* ip) {
+pthread_t run_client_backend(client_t* client, size_t port, const char* ip) {
     thread_args_t args = {};
 
     args.owner        = OWNER::CLIENT;
@@ -307,17 +101,13 @@ void run_client_backend(client_t* client, size_t port, const char* ip) {
     args.ip           = ip;
     args.port         = port;
 
-    pthread_t thread_id[THREAD_NUM];
+    pthread_t networking_tid;
 
     #ifdef DEBUG_VERSION
         InitLogFile("../log_client.txt");
     #endif
 
-    pthread_create(&thread_id[0], NULL, start_networking,       (void*)&args);
-    pthread_create(&thread_id[1], NULL, start_client_interface, (void*)&args);
-    pthread_create(&thread_id[2], NULL, front_for_test_only,    (void*)&args);
+    pthread_create(&networking_tid, NULL, start_networking, (void*)&args);
 
-    for (int i = THREAD_NUM - 1; i >= 0; i --) {
-        pthread_join(thread_id[i], NULL);
-    }
+    return networking_tid;
 }

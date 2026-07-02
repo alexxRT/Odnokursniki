@@ -8,18 +8,18 @@
 
 typedef struct client_ {
     STATUS       status;
-    uint64_t     name_hash;
-    uv_stream_t* server_dest;
     uv_loop_t*   event_loop;
     ThreadSafeList<chat_message_t>* incoming_msg;
     chat_session_t session;
+    char username[NAME_SIZE];
 } client_t;
 
 
 client_t* create_client();
+void      set_client_username(client_t* client, const char* username);
 void      destroy_client(client_t* client);
 
-void run_client_backend(client_t* client, size_t port, const char* ip);
+pthread_t run_client_backend(client_t* client, size_t port, const char* ip);
 
 
 

@@ -49,21 +49,20 @@ add_subdirectory(inc/messages)
 # ==> Build tests
 
 add_executable(server server.cpp src/server.cpp src/chat_base.cpp src/networking.cpp src/sender.cpp src/chat_session.cpp)
-add_executable(client client.cpp src/client.cpp src/chat_base.cpp src/networking.cpp src/sender.cpp src/chat_session.cpp)
 
 #target_link_libraries(server      PUBLIC ${LIBUV_LIBRARY} chat_msg list)
 target_link_libraries(server       PUBLIC uv_a chat_msg list)
 #target_include_directories(server PUBLIC ${LIBUV_INCLUDE} ${CMAKE_CURRENT_SOURCE_DIR}/inc)
 target_include_directories(server       PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/inc)
 
-#target_link_libraries(client      PUBLIC ${LIBUV_LIBRARY} chat_msg list)
-target_link_libraries(client       PUBLIC uv_a chat_msg list)
-#target_include_directories(client PUBLIC ${LIBUV_INCLUDE} ${CMAKE_CURRENT_SOURCE_DIR}/inc)
-target_include_directories(client PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/inc)
-
 # ==> ncurses GUI example
 find_package(Curses REQUIRED)
 
-add_executable(win window.cpp)
-target_link_libraries(win       PUBLIC uv_a chat_msg list ${CURSES_LIBRARIES})
-target_include_directories(win  PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/inc)
+add_executable(app app.cpp src/tui_core.cpp src/tui_events.cpp src/enter_scene.cpp src/chat_scene.cpp
+                src/chat_base.cpp
+                src/sender.cpp
+                src/client.cpp
+                src/networking.cpp
+                src/chat_session.cpp)
+target_link_libraries(app       PUBLIC uv_a chat_msg list ${CURSES_LIBRARIES})
+target_include_directories(app  PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/inc)

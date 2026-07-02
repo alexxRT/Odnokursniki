@@ -37,9 +37,6 @@ typedef struct connection_ {
 //TO DO split to little functions
 void* start_networking(void* args);
 
-//sender function
-void* start_sender(void* args);
-
 //callbacks
 void on_acceptance      (uv_stream_t* server_endpoint, int status);
 void on_connect         (uv_connect_t* req, int status);

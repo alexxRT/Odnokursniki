@@ -120,13 +120,13 @@ void on_close_connection(uv_handle_t* close_handle) {
     uv_read_stop((uv_stream_t*)close_handle);
 
     chat_session_t* active_session = (chat_session_t*)uv_handle_get_data(close_handle);
-    fprintf(stderr, "[INFO] Terminating active session; session_id=[%llu]\n", active_session->client_id);
-
-    active_session->client_id     = 0;
-    active_session->client_name   = 0;
-    active_session->client_stream = NULL;
-    active_session->state = CLIENT_STATE::DISCONNECTED;
-
+    if (active_session) {
+        fprintf(stderr, "[INFO] Terminating active session; session_id=[%llu]\n", active_session->client_id);
+        active_session->client_id     = 0;
+        active_session->client_name   = 0;
+        active_session->client_stream = NULL;
+        active_session->state = CLIENT_STATE::DISCONNECTED;
+    }
     fprintf(stderr, "[INFO] Session terminated\n");
     FREE(close_handle);
 }
@@ -182,15 +182,16 @@ void on_write(uv_write_t* write_handle, int status) {
 void on_connect(uv_connect_t* req, int status) {
     if (status < 0) {
         fprintf(stderr, "[ERROR] Failed to connect, bad status=[%d]\n", status);
-        uv_close((uv_handle_t*)req->handle, on_close_connection);
         FREE(req);
         return;
     }
 
-    connection->client->server_dest = (uv_stream_t*)req->handle;
-    uint64_t client_id = hash_djb2_data(&connection->client->server_dest, sizeof(uv_stream_t*));
-    connection->client->session = create_new_session(connection->client->server_dest, client_id);
-    fprintf(stderr, "[INFO] New session created; session_id=[%llu]\n", connection->client->session.client_id);
+    uv_stream_t* server_endpoint = (uv_stream_t*)req->handle;
+    uint64_t client_id = hash_djb2_data(&server_endpoint, sizeof(uv_stream_t*));
+    connection->client->session.client_id = client_id;
+    connection->client->session.client_stream = server_endpoint;
+    connection->client->session.state = CLIENT_STATE::CONNECTED;
+    fprintf(stderr, "[INFO] Session state changed to connected; session_id=[%llu]\n", connection->client->session.client_id);
 
     uv_handle_set_data((uv_handle_t*)req->handle, (void*)&connection->client->session);
     fprintf(stderr, "[INFO] Session attached to uv_handle; session_id=[%llu]\n", connection->client->session.client_id);
@@ -300,6 +301,9 @@ ERR_STAT run_networking(client_t* client, const char* ip, size_t port) {
     uv_ip4_addr(ip, port, &addr);
     uv_connect_t* req = CALLOC(1, uv_connect_t);
 
+    connection->client->session = create_new_session(NULL, 0);
+    connection->client->session.state = CLIENT_STATE::DISCONNECTED;
+
     int connect_stat = uv_tcp_connect(req, server_endpoint, (const struct sockaddr *)&addr, on_connect);
 
     if (connect_stat) {
@@ -331,13 +335,13 @@ void* start_networking(void* args) {
     if (connection->owner == OWNER::CLIENT) {
         connection->client = (client_t*)backend_params->owner_struct;
         backend_stat = run_networking(connection->client, backend_params->ip, backend_params->port);
+        fprintf(stderr, "[INFO] Networking stopped; client backend exit\n");
     }
     else {
         connection->server = (server_t*)backend_params->owner_struct;
         backend_stat = run_networking(connection->server, backend_params->ip, backend_params->port);
+        fprintf(stderr, "[INFO] Networking stopped; server backend exit\n");
     }
-
-    fprintf(stderr, "<<<<<<     Networking finalization     >>>>>>\n");
 
     if (backend_stat != ERR_STAT::SUCCESS) {
         fprintf(stderr, "Error Network Backend. Error Code: %llu\n", backend_stat);

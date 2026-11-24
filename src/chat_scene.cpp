@@ -9,21 +9,25 @@
 #include "chat_scene.h"
 #include "sender.h"
 
-struct MockClient {
-    const char* name;
+struct ChatContact {
+    char name[NAME_SIZE + 1];
     bool online;
+    unsigned unread;
     std::vector<std::string> messages;
 };
 
-static MockClient mock_clients[] = {
-    {"QUIT",  true,  {}},
-    {"alice", true,  {}},
-    {"bob",   false, {}},
-    {"leha",  true,  {}},
-    {"masha", false, {}},
-};
+static ChatContact contacts[MAX_SESSIONS_COUNT + 1];
+static int contact_count;
 
-static const int MOCK_CLIENT_COUNT = sizeof(mock_clients) / sizeof(mock_clients[0]);
+static int find_contact(const char name[NAME_SIZE]) {
+    for (int i = 1; i < contact_count; i++)
+        if (!strncmp(contacts[i].name, name, NAME_SIZE))
+            return i;
+    if (!name[0] || contact_count >= (int)(sizeof(contacts) / sizeof(contacts[0])))
+        return 0;
+    memcpy(contacts[contact_count].name, name, NAME_SIZE);
+    return contact_count++;
+}
 
 static const int CHAT_MENU_WIN   = 0;
 static const int CHAT_DIALOG_WIN = 1;
@@ -59,17 +63,20 @@ static void draw_menu_win(gui_scene_t* scene) {
     chat_win_state_t* state = get_chat_state(scene);
 
     werase(menu->win);
-    for (int i = 0; i < MOCK_CLIENT_COUNT; i++) {
+    for (int i = 0; i < contact_count; i++) {
         if (state->highlight_idx == i)
             wattron(menu->win, A_REVERSE);
 
-        mvwprintw(menu->win, i + 1, 1, "%s", mock_clients[i].name);
+        mvwprintw(menu->win, i + 1, 1, "%s", contacts[i].name);
 
         if (i > 0) {
-            const char* status = mock_clients[i].online ? "online" : "offline";
+            const char* status = contacts[i].online ? "online" : "offline";
             int status_x = menu->size.width - (int)strlen(status) - 2;
             if (status_x < 1)
                 status_x = 1;
+            int name_end = 1 + (int)strlen(contacts[i].name);
+            if (contacts[i].unread && name_end + 2 < status_x)
+                mvwaddch(menu->win, i + 1, name_end + 1, '*');
             mvwprintw(menu->win, i + 1, status_x, "%s", status);
         }
 
@@ -85,7 +92,7 @@ static void draw_dialog_win(gui_scene_t* scene) {
     werase(dialog->win);
 
     if (state->active_client_idx > 0) {
-        MockClient& client = mock_clients[state->active_client_idx];
+        ChatContact& client = contacts[state->active_client_idx];
         int max_lines = dialog->size.hight - 2;
         int msg_count = (int)client.messages.size();
         int start = msg_count > max_lines ? msg_count - max_lines : 0;
@@ -131,6 +138,48 @@ static void redraw_chat_scene(gui_scene_t* scene) {
     flush_chat_scene(scene);
 }
 
+void receive_chat_messages(gui_scene_t* scene) {
+    chat_message_t msg = {};
+    bool changed = false;
+    chat_win_state_t* state = get_chat_state(scene);
+    while (scene->client->incoming_msg->pop_oldest(&msg)) {
+        if (msg.msg_type == MSG_TYPE::SYSTEM && msg.sys_command == COMMAND::ONLINE) {
+            for (int i = 1; i < contact_count; i++)
+                contacts[i].online = false;
+            for (int pos = 0; pos + NAME_SIZE <= MSG_SIZE && msg.msg_body[pos]; pos += NAME_SIZE) {
+                const char* name = msg.msg_body + pos;
+                if (strncmp(name, scene->client->username, NAME_SIZE)) {
+                    int i = find_contact(name);
+                    if (i) contacts[i].online = true;
+                }
+            }
+        } else {
+            bool sent = msg.msg_type == MSG_TYPE::ERROR_MSG && msg.sys_command == COMMAND::SEND_MESSAGE;
+            if (!sent && msg.msg_type != MSG_TYPE::TXT_MSG)
+                continue;
+            int i = find_contact(sent ? msg.to : msg.from);
+            if (!i)
+                continue;
+            char line[MSG_SIZE + NAME_SIZE + 4] = {};
+            if (sent && msg.error_stat != ERR_STAT::SUCCESS)
+                snprintf(line, sizeof(line), "Message could not be delivered");
+            else
+                snprintf(line, sizeof(line), "%.*s: %.*s", NAME_SIZE, sent ? "You" : msg.from, MSG_SIZE, msg.msg_body);
+            contacts[i].messages.emplace_back(line);
+            if (state->active_client_idx < 0)
+                state->active_client_idx = i;
+            if (!sent && state->active_client_idx != i)
+                contacts[i].unread++;
+        }
+        changed = true;
+    }
+    if (changed) {
+        if (!state->highlight_idx && contact_count > 1 && state->active_client_idx < 0)
+            state->highlight_idx = 1;
+        redraw_chat_scene(scene);
+    }
+}
+
 static void set_chat_focus(gui_scene_t* scene, ChatFocus focus) {
     chat_win_state_t* state = get_chat_state(scene);
     state->focus = focus;
@@ -151,15 +200,12 @@ static void send_chat_message(gui_scene_t* scene) {
     if (state->input_len <= 0 || state->active_client_idx <= 0)
         return;
 
-    // display message on dialog window
-    mock_clients[state->active_client_idx].messages.emplace_back(state->input_buf);
-    if (scene->client && scene->client->session.state == CLIENT_STATE::CONNECTED) { // send message to addressant via backend
-        ERR_STAT send_stat = send_message_text(scene->client, mock_clients[state->active_client_idx].name,
-                                                              state->input_buf);
-        if (send_stat != ERR_STAT::SUCCESS)
-            fprintf(logerr, "[ERROR] Failed to send text message to addressant; error_id=[%d]\n", send_stat);
+    ChatContact& contact = contacts[state->active_client_idx];
+    if (!contact.online || send_message_text(scene->client, contact.name, state->input_buf) != ERR_STAT::SUCCESS) {
+        contact.messages.emplace_back("Could not send. Draft kept.");
+        redraw_chat_scene(scene);
+        return;
     }
-
     memset(state->input_buf, 0, sizeof(state->input_buf));
     state->input_len = 0;
 
@@ -170,13 +216,6 @@ static void send_chat_message(gui_scene_t* scene) {
 
 void handle_chat_input_key(gui_scene_t* scene, int ch) {
     chat_win_state_t* state = get_chat_state(scene);
-
-    if (ch == 'q') {
-        gui_event_t finalize_event = {.event_id = GUI_EVENT::FINALIZE};
-        scene->pending_events->insert_head(finalize_event);
-        handle_pending_events(scene);
-        return;
-    }
 
     if (ch == KEY_RESIZE) {
         int screen_h = 0;
@@ -194,7 +233,7 @@ void handle_chat_input_key(gui_scene_t* scene, int ch) {
         return;
     }
 
-    if (ch == KEY_LEFT) {
+    if (ch == KEY_LEFT || ch == 27) {
         gui_event_t left_event = {.event_id = GUI_EVENT::ARROW_LEFT};
         scene->pending_events->insert_head(left_event);
         handle_pending_events(scene);
@@ -216,7 +255,7 @@ void handle_chat_input_key(gui_scene_t* scene, int ch) {
         return;
     }
 
-    if (ch >= 32 && ch < 127 && state->input_len < MAX_INPUT_LEN - 1) {
+    if (ch >= 32 && ch < 127 && state->input_len < MSG_SIZE) {
         state->input_buf[state->input_len] = (char)ch;
         state->input_len++;
         state->input_buf[state->input_len] = '\0';
@@ -291,7 +330,7 @@ static bool handle_chat_menu_arrow(gui_scene_t* scene, gui_event_t* event) {
         if (state->highlight_idx > 0)
             state->highlight_idx--;
     } else {
-        if (state->highlight_idx < MOCK_CLIENT_COUNT - 1)
+        if (state->highlight_idx < contact_count - 1)
             state->highlight_idx++;
     }
 
@@ -310,6 +349,7 @@ static bool handle_chat_menu_enter(gui_scene_t* scene, gui_event_t* event) {
     }
 
     state->active_client_idx = state->highlight_idx;
+    contacts[state->active_client_idx].unread = 0;
     memset(state->input_buf, 0, sizeof(state->input_buf));
     state->input_len = 0;
 
@@ -353,7 +393,11 @@ gui_scene_t* create_chat_scene() {
 
     chat_win_state_t* chat_state = CALLOC(1, chat_win_state_t);
     chat_state->focus = FOCUS_MENU;
-    chat_state->highlight_idx = 1;
+    for (int i = 0; i < contact_count; i++)
+        contacts[i] = {};
+    strcpy(contacts[0].name, "QUIT");
+    contact_count = 1;
+    chat_state->highlight_idx = 0;
     chat_state->active_client_idx = -1;
     chat_state->input_len = 0;
     chat_scene->scene_attrs = chat_state;

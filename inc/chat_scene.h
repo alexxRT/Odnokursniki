@@ -17,6 +17,7 @@ typedef struct chat_win_state {
 } chat_win_state_t;
 
 chat_win_state_t* get_chat_state(gui_scene_t* scene);
+void receive_chat_messages(gui_scene_t* scene);
 void handle_chat_input_key(gui_scene_t* scene, int ch);
 bool handle_chat_resize_event(gui_scene_t* scene, gui_event_t* event);
 gui_scene_t* create_chat_scene();

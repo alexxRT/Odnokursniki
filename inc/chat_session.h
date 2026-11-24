@@ -3,6 +3,7 @@
 
 #include <assert.h>
 #include "uv.h"
+#include "messages.h"
 
 typedef struct server_ server_t;
 
@@ -18,6 +19,9 @@ typedef struct session {
     uv_stream_t* client_stream = NULL;
     uint64_t client_id   = 0; // client stream pointer hash
     uint64_t client_name = 0; // client name string hash
+    MSG_TYPE incoming_type;
+    buffer_t* incoming_frame;
+    size_t bytes_read;
 } chat_session_t;
 
 chat_session_t* add_new_session(chat_session_t sessions[], uv_stream_t* stream, uint64_t client_id);

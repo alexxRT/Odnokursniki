@@ -3,39 +3,33 @@
 #include "enter_scene.h"
 #include "chat_scene.h"
 #include "client.h"
+#include "networking.h"
+#include <unistd.h>
 
 void run_gui_app() {
     logerr = fopen("logs.txt", "w");
-    client_t* client = create_client();
-    pthread_t client_tid;
-
-    if (client)
-        client_tid = run_client_backend(client, 8123, "127.0.0.1");
-
+    if (!logerr)
+        return;
+    dup2(fileno(logerr), STDERR_FILENO);
     while (true) {
+        client_t* client = create_client();
+        pthread_t client_tid = run_client_backend(client, 8123, "127.0.0.1");
         gui_scene_t* enter_scene = create_enter_scene();
-        if (!enter_scene)
-            return;
-        // wire up networking client
-        enter_scene->client = client;
-
-        SceneResult result = scene_render(enter_scene);
-        cleanup_scene(enter_scene);
-
-        if (result == SCENE_RESULT_EXIT)
-            break;
-        if (result != SCENE_RESULT_ENTER_CHAT)
-            continue;
-
-        gui_scene_t* chat_scene = create_chat_scene();
-        if (!chat_scene)
-            break;
-        // same with networking here
-        chat_scene->client = client;
-
-        result = scene_render(chat_scene);
-        cleanup_scene(chat_scene);
-
+        SceneResult result = SCENE_RESULT_EXIT;
+        if (enter_scene) {
+            enter_scene->client = client;
+            result = scene_render(enter_scene);
+            cleanup_scene(enter_scene);
+        }
+        if (result == SCENE_RESULT_ENTER_CHAT) {
+            gui_scene_t* chat_scene = create_chat_scene();
+            chat_scene->client = client;
+            result = scene_render(chat_scene);
+            cleanup_scene(chat_scene);
+        }
+        call_async_stop();
+        pthread_join(client_tid, NULL);
+        destroy_client(client);
         if (result == SCENE_RESULT_EXIT)
             break;
     }
@@ -43,10 +37,6 @@ void run_gui_app() {
     if (logerr)
         fclose(logerr);
 
-    if (client) {
-        destroy_client(client);
-        pthread_join(client_tid, NULL);
-    }
 }
 
 int main() {

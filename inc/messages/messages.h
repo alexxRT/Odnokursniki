@@ -52,6 +52,7 @@ typedef struct message_ {
     write_handler_t write_message;
     read_handler_t  read_message;
 
+    uint64_t session_id = 0; // local queue metadata, never serialized
     uv_stream_t* client_endpoint = NULL;
 } chat_message_t;
 

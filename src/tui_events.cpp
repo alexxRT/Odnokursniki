@@ -60,10 +60,13 @@ SceneResult scene_render(gui_scene_t* scene) {
     fprintf(stderr, "[INFO] Starting render scene; scene_id=[%llu]\n", scene->scene_id);
     scene->result = SCENE_RESULT_CONTINUE;
 
+    timeout(scene->scene_kind == SCENE_KIND_CHAT ? 40 : -1);
     while (ask_active(scene)) {
         chat_win_state_t* chat_state = nullptr;
-        if (scene->scene_kind == SCENE_KIND_CHAT)
+        if (scene->scene_kind == SCENE_KIND_CHAT) {
+            receive_chat_messages(scene);
             chat_state = get_chat_state(scene);
+        }
 
         if (chat_state && chat_state->focus == FOCUS_INPUT) {
             handle_chat_input_key(scene, getch());

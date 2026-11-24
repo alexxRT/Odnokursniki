@@ -60,7 +60,7 @@ static char* win_input(WINDOW* win, int start_y, int start_x, bool echo_mode) {
                 curs_set(0);
                 return input;
             }
-        } else if (c != ERR && c >= 32 && c < 127 && pointer < MAX_INPUT_LEN - 1) {
+        } else if (c != ERR && c >= 32 && c < 127 && pointer < (echo_mode ? NAME_SIZE : PSWD_SIZE)) {
             input[pointer] = (char)c;
             char shown = echo_mode ? (char)c : '*';
             mvwaddch(win, start_y, start_x + pointer, shown);
@@ -189,6 +189,16 @@ static int schedule_window_event(gui_event_t* event) {
     return -1;
 }
 
+static bool auth_approved(client_t* client, COMMAND command, ERR_STAT sent, const char* username) {
+    chat_message_t reply = {};
+    if (sent != ERR_STAT::SUCCESS || !client->incoming_msg->wait_for(5000) ||
+        !client->incoming_msg->pop_oldest(&reply) || reply.msg_type != MSG_TYPE::ERROR_MSG ||
+        reply.sys_command != command || reply.error_stat != ERR_STAT::SUCCESS)
+        return false;
+    set_client_username(client, username);
+    return true;
+}
+
 static bool perform_sign_in(gui_scene_t* scene, window_t* enter_window) {
     draw_prompt_sign_in(enter_window);
     keypad(enter_window->win, TRUE);
@@ -200,17 +210,11 @@ static bool perform_sign_in(gui_scene_t* scene, window_t* enter_window) {
     noecho();
     curs_set(0);
 
-    if (scene->client && scene->client->session.state == CLIENT_STATE::CONNECTED) {
-        ERR_STAT send_stat = send_message_login(scene->client, user_name, password);
-        if (send_stat != ERR_STAT::SUCCESS) {
-            fprintf(log_file, "[ERROR] Failed to send registger data to server; error_id=[%d]\n", send_stat);
-        }
-    }
-
+    bool ok = auth_approved(scene->client, COMMAND::LOG_IN,
+                            send_message_login(scene->client, user_name, password), user_name);
     FREE(user_name);
     FREE(password);
 
-    bool ok = true;
     if (ok) {
         scene->result = SCENE_RESULT_ENTER_CHAT;
         terminate_scene(scene);
@@ -232,19 +236,19 @@ static bool perform_register(gui_scene_t* scene, window_t* enter_window) {
     char* user_name = win_input(enter_window->win, REG_USERNAME_ROW, REG_USERNAME_COL, true);
     mvwprintw(enter_window->win, REG_PASSWORD_ROW, PROMPT_LABEL_COL, "CREATE PASSWORD: ");
     wrefresh(enter_window->win);
-    char* password  = win_input(enter_window->win, REG_PASSWORD_ROW, REG_PASSWORD_COL, true);
+    char* password  = win_input(enter_window->win, REG_PASSWORD_ROW, REG_PASSWORD_COL, false);
     noecho();
     curs_set(0);
 
-    if (scene->client && scene->client->session.state == CLIENT_STATE::CONNECTED) {
-        ERR_STAT send_stat = send_message_register(scene->client, user_name, password);
-        if (send_stat != ERR_STAT::SUCCESS) {
-            fprintf(log_file, "[ERROR] Failed to send registger data to server; error_id=[%d]\n", send_stat);
-        }
-    }
-
+    bool ok = auth_approved(scene->client, COMMAND::REGISTR,
+                            send_message_register(scene->client, user_name, password), user_name);
     FREE(user_name);
     FREE(password);
+    if (!ok) {
+        ((enter_win_state_t*)enter_window->attrs)->show_error = true;
+        draw_enter_window_register(enter_window);
+        return true;
+    }
 
     scene->result = SCENE_RESULT_ENTER_CHAT;
     terminate_scene(scene);

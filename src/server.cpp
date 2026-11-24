@@ -101,51 +101,20 @@ void destroy_server(server_t* server) {
 
 //---------------------------------------------INTERFACE---------------------------------------------//
 
-void send_all_status_changed(server_t* server, base_client_t* client) {
-    assert(client);
-    assert(server);
-
-    char server_name[NAME_SIZE] = {0};
-
-    for (int i = 0; i < server->client_base->size; i ++) {
-        base_client_t* client_recv = server->client_base->base + i;
-
-        if (client_recv->status == STATUS::ONLINE) {
-            chat_message_t msg = create_chat_message(MSG_TYPE::SYSTEM);
-            msg.sys_command = COMMAND::ONLINE;
-
-            strncpy(msg.to, client_recv->name, NAME_SIZE);
-            strncpy(msg.from, server_name, NAME_SIZE);
-            strncpy(msg.msg_body, client->name, NAME_SIZE);
-
-            server->outgoing_msg->insert_head(msg);
-        }
-    }
-}
-
-void send_online_list(server_t* server, base_client_t* client) {
-    assert(client);
-    assert(server);
-
-    char server_name[NAME_SIZE] = {0};
-
+void send_online_list(server_t* server) {
     chat_message_t msg = create_chat_message(MSG_TYPE::SYSTEM);
     msg.sys_command = COMMAND::ONLINE;
-
-    strncpy(msg.to, client->name, NAME_SIZE);
-    strncpy(msg.from, server_name, NAME_SIZE);
-
-    for (int i = 0; i < server->client_base->size; i ++) {
-        base_client_t* client_stored = server->client_base->base + i;
-        size_t position = 0;
-
-        if (client->status == STATUS::ONLINE) {
-            strncpy(msg.msg_body + position, client_stored->name, NAME_SIZE);
+    size_t position = 0;
+    static_assert(MAX_SESSIONS_COUNT * NAME_SIZE <= MSG_SIZE);
+    for (size_t i = 0; i < MAX_SESSIONS_COUNT; i++) {
+        chat_session_t* session = server->active_sessions + i;
+        if (session->state == CLIENT_STATE::LOGGED_IN) {
+            base_client_t* user = get_client(server->client_base, session->client_name);
+            memcpy(msg.msg_body + position, user->name, NAME_SIZE);
             position += NAME_SIZE;
         }
     }
-
-    server->outgoing_msg->insert_head(msg);
+    broadcast_message(server, &msg);
 }
 
 cmd_result_t operate_command(server_t* server, chat_session_t* session, chat_message_t* msg) {
@@ -154,6 +123,15 @@ cmd_result_t operate_command(server_t* server, chat_session_t* session, chat_mes
     assert(msg     && "[FATAL] msg is NULL on operate_command");
 
     COMMAND code = msg->sys_command;
+
+    if (code == COMMAND::REGISTR || code == COMMAND::LOG_IN) {
+        char name[NAME_SIZE + 1] = {};
+        memcpy(name, msg->msg_body, NAME_SIZE);
+        if (session->state != CLIENT_STATE::CONNECTED || !name[0] || !msg->msg_body[NAME_SIZE])
+            return {ERR_STAT::BAD_REQUEST, code};
+        if (get_current_session_by_name(server->active_sessions, server->client_base->hash_client(name)))
+            return {ERR_STAT::NAME_TAKEN, code};
+    }
 
     switch(code) {
         case COMMAND::LOG_IN: {
@@ -183,30 +161,14 @@ cmd_result_t operate_command(server_t* server, chat_session_t* session, chat_mes
         break;
 
         case COMMAND::LOG_OUT: {
-            base_client_t* client = log_out_client(server->client_base, msg->msg_body);
-
-            if (client) {
-                // change_status(client);
-                send_all_status_changed(server, client);
-
-                //closing connection
-                call_async_close((uv_handle_t*)client->client_stream);
-
-                fprintf(stderr, "Client [%s] log out\n\n", client->name);
-                //return ERR_STAT::SUCCESS;
-            }
-            fprintf(stderr, "BAD LOG OUT. Client was not found\n");
-            fprintf(stderr, "Client request: %s\n\n", msg->msg_body);
+            call_async_close((uv_handle_t*)session->client_stream);
+            return {ERR_STAT::SUCCESS, code};
         }
-        break;
-
         case COMMAND::ONLINE: {
-            base_client_t* client = get_client(server->client_base, msg->client_endpoint);
-            send_online_list(server, client);
-            fprintf(stderr, "Online list sent\n");
+            if (session->state == CLIENT_STATE::LOGGED_IN)
+                send_online_list(server);
+            return {ERR_STAT::SUCCESS, code};
         }
-        break;
-
         case COMMAND::ON_CLOSE: {
             fprintf (stderr, "Connection closed. Confirmed!\n");
             //return ERR_STAT::SUCCESS;
@@ -229,21 +191,32 @@ ERR_STAT operate_request(server_t* server, chat_session_t* session, chat_message
 
     switch (msg_type) {
         case MSG_TYPE::TXT_MSG: {
+            if (session->state != CLIENT_STATE::LOGGED_IN)
+                return ERR_STAT::BAD_LOGIN;
+            base_client_t* sender = get_client(server->client_base, session->client_name);
+            memcpy(msg->from, sender->name, NAME_SIZE);
+            char recipient[NAME_SIZE + 1] = {};
+            memcpy(recipient, msg->to, NAME_SIZE);
             // find addressant session
-            uint64_t addressant_id = server->client_base->hash_client(msg->to);
+            uint64_t addressant_id = server->client_base->hash_client(recipient);
             chat_session_t* addressant_session = get_current_session_by_name(server->active_sessions, addressant_id);
+            base_client_t* recipient_user = get_client(server->client_base, addressant_id);
+            if (!recipient_user || strncmp(recipient_user->name, recipient, NAME_SIZE))
+                addressant_session = NULL;
             ERR_STAT send_status = addressant_session ? ERR_STAT::SUCCESS : ERR_STAT::CLIENT_OFFLINE;
 
             // check if online, otherwise drop message for now
             if (send_status == ERR_STAT::CLIENT_OFFLINE) {
                 fprintf(stderr, "[INFO] Client=[%llu] is offline, unreachable\n", addressant_id);
-                fprintf(stderr, "[ERROR] Unable to send message to=[%s]; session_id=[%llu]\n", msg->to, session->client_id);
+                fprintf(stderr, "[ERROR] Unable to send message to=[%.8s]; session_id=[%llu]\n", msg->to, session->client_id);
             } else {
-                fprintf(stderr, "[INFO] Retrnsmitting message: from=[%s], to=[%s]\n", msg->from, msg->to);
+                fprintf(stderr, "[INFO] Retrnsmitting message: from=[%.8s], to=[%.8s]\n", msg->from, msg->to);
                 send_status = send_message(server, addressant_session, msg);
             }
 
             chat_message_t status_msg = create_chat_message(MSG_TYPE::ERROR_MSG);
+            memcpy(status_msg.to, msg->to, NAME_SIZE);
+            memcpy(status_msg.msg_body, msg->msg_body, MSG_SIZE);
             status_msg.error_stat = send_status;
             status_msg.sys_command = COMMAND::SEND_MESSAGE;
             send_status = send_message(server, session, &status_msg);
@@ -260,31 +233,11 @@ ERR_STAT operate_request(server_t* server, chat_session_t* session, chat_message
             status_msg.error_stat = cmd_stat.status_id;
             status_msg.sys_command = cmd_stat.command_id;
 
-            switch (cmd_stat.command_id) {
-                case COMMAND::LOG_IN: {
-                    if (cmd_stat.status_id == ERR_STAT::SUCCESS) {
-                        ERR_STAT broadcast_stat = broadcast_message(server, &status_msg);
-                        fprintf(stderr, "[INFO] Broadcast all clients with new log in; session_id=[%llu]\n",
-                                    session->client_id) ? broadcast_stat == ERR_STAT::SUCCESS :
-                        fprintf(stderr, "[ERROR] Failed to broadcast, status=[%lu]; session_id=[%llu]\n",
-                                    broadcast_stat, session->client_id);
-                    } else {
-                        ERR_STAT send_stat = send_message(server, session, &status_msg);
-                        fprintf(stderr, "[INFO] Sent client bad log in; session_id=[%llu]\n",
-                                    session->client_id) ? send_stat == ERR_STAT::SUCCESS :
-                        fprintf(stderr, "[ERROR] Failed to send status, status=[%lu]; session_id=[%llu]\n",
-                                    send_stat, session->client_id);
-                    }
-                } break;
-                case COMMAND::REGISTR: {
-                    ERR_STAT send_stat = send_message(server, session, &status_msg);
-                    fprintf(stderr, "[INFO] Sent client register success; session_id=[%llu]\n",
-                                    session->client_id) ? send_stat == ERR_STAT::SUCCESS :
-                    fprintf(stderr, "[ERROR] Failed to send regiter status; session_id=[%llu]\n",
-                                    session->client_id);
-                }
-                default:
-                    break;
+            send_message(server, session, &status_msg);
+            if ((cmd_stat.command_id == COMMAND::LOG_IN || cmd_stat.command_id == COMMAND::REGISTR) &&
+                cmd_stat.status_id == ERR_STAT::SUCCESS) {
+                session->state = CLIENT_STATE::LOGGED_IN;
+                send_online_list(server);
             }
         } break;
         case MSG_TYPE::ERROR_MSG: {
@@ -309,8 +262,6 @@ ERR_STAT operate_request(server_t* server, chat_session_t* session, chat_message
                 bool disconnect = change_state_session(server->active_sessions, session->client_id, CLIENT_STATE::DISCONNECTED);
                 if (disconnect) {
                     fprintf(stderr, "[INFO] Client disconnected; session id=[%llu]\n", session->client_id);
-                    uv_handle_t* on_close_handle = (uv_handle_t*)session->client_stream;
-                    uv_handle_set_data(on_close_handle, (void*)session);
                     call_async_close((uv_handle_t*)session->client_stream);
                 }
                 else {
@@ -389,22 +340,23 @@ void* start_interface(void* args) {
         //block until smth will apear to read ---> avoid useless "while" looping
         server->incoming_msg->wait();
 
-        chat_message_t msg = server->incoming_msg->get_head()->data;
-        server->incoming_msg->delete_head();
-
-        uint64_t client_id = hash_djb2_data((void*)(&msg.client_endpoint), sizeof(uv_stream_t*));
-        CLIENT_STATE session_state = get_state_session(server->active_sessions, client_id);
-
-        if (session_state == CLIENT_STATE::UNDEFINED ||
-            session_state == CLIENT_STATE::DISCONNECTED)
-        {
-            fprintf(stderr, "[FATAL] Drop request, session state undefined or disconnected; session_id=[%llu]\n", client_id);
+        chat_message_t msg = {};
+        if (!server->incoming_msg->pop_oldest(&msg))
+            continue;
+        pthread_mutex_lock(&sessions_mutex);
+        if (!msg.session_id && msg.sys_command == COMMAND::ON_CLOSE) {
+            send_online_list(server);
+            pthread_mutex_unlock(&sessions_mutex);
             continue;
         }
-
-        chat_session_t* session = get_current_session(server->active_sessions, client_id);
-        fprintf(stderr, "[INFO] New request; session_id=[%llu]\n", session->client_id);
+        chat_session_t* session = get_current_session(server->active_sessions, msg.session_id);
+        if (!session) {
+            pthread_mutex_unlock(&sessions_mutex);
+            continue;
+        }
+        uint64_t client_id = session->client_id;
         ERR_STAT request_stat = operate_request(server, session, &msg);
+        pthread_mutex_unlock(&sessions_mutex);
 
         if (request_stat != ERR_STAT::SUCCESS)
         {
@@ -424,7 +376,7 @@ void* start_interface(void* args) {
 
 
 void run_server_backend(server_t* server, const char* ip_address, size_t port) {
-    pthread_t   pid[THREAD_NUM];
+    pthread_t   pid[2];
     thread_args_t args = {};
 
     args.owner_struct = (void*)server;
@@ -439,6 +391,6 @@ void run_server_backend(server_t* server, const char* ip_address, size_t port) {
     pthread_create(&pid[0], NULL, start_networking,(void*)&args);
     pthread_create(&pid[1], NULL, start_interface, (void*)&args);
 
-    for (int i = THREAD_NUM - 1; i >= 0; i--)
+    for (int i = 1; i >= 0; i--)
         pthread_join(pid[i], NULL);
 }

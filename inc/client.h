@@ -7,6 +7,8 @@
 #include "ts_list.h"
 
 typedef struct client_ {
+    uv_sem_t backend_ready;
+    thread_args_t backend_args;
     STATUS       status;
     uv_loop_t*   event_loop;
     ThreadSafeList<chat_message_t>* incoming_msg;

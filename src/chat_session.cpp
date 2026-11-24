@@ -61,7 +61,7 @@ chat_session_t* get_current_session(chat_session_t sessions[], uint64_t client_i
 
 chat_session_t* get_current_session_by_name(chat_session_t sessions[], uint64_t client_name) {
     for (size_t i = 0; i < MAX_SESSIONS_COUNT; i ++) {
-        if (sessions[i].client_name == client_name) {
+        if (sessions[i].state == CLIENT_STATE::LOGGED_IN && sessions[i].client_name == client_name) {
             return sessions + i;
         }
     }

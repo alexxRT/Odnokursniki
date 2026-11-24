@@ -4,6 +4,7 @@
 #include <errno.h>
 #include <pthread.h>
 #include <mutex>
+#include <condition_variable>
 
 #include "messages.h"
 #define USER_DTYPE chat_message_t
@@ -52,7 +53,6 @@ class ThreadSafeList {
             #endif
         }
 
-        std::unique_lock<std::mutex> ul(mx_update);
         update.notify_one();
     };
 
@@ -67,7 +67,6 @@ class ThreadSafeList {
             #endif
         }
 
-        std::unique_lock<std::mutex> ul(mx_update);
         update.notify_one();
     };
 
@@ -129,11 +128,23 @@ class ThreadSafeList {
         return NULL;
     }
 
-    void wait(){
-        while (empty()){
-            std::unique_lock<std::mutex> ul(mx_update);
-            update.wait(ul);
-        }
+    bool pop_oldest(ListDataT* item) {
+        std::scoped_lock lock(mx_list);
+        if (!list.size)
+            return false;
+        size_t tail = list.buffer[HEAD_ID].prev;
+        *item = list.buffer[tail].data;
+        return ListDeleteIndex(&list, tail) == LIST_ERR_CODE::SUCCESS;
+    }
+
+    bool wait_for(unsigned milliseconds) {
+        std::unique_lock<std::mutex> lock(mx_list);
+        return update.wait_for(lock, std::chrono::milliseconds(milliseconds), [this] { return list.size != 0; });
+    }
+
+    void wait() {
+        std::unique_lock<std::mutex> lock(mx_list);
+        update.wait(lock, [this] { return list.size != 0; });
     }
 
     protected:
@@ -141,7 +152,6 @@ class ThreadSafeList {
     list_t<ListDataT> list;
 
     std::condition_variable update;
-    std::mutex mx_update;
 };
 
 #endif //THREADS_SAFE_LIST_MESSAGES

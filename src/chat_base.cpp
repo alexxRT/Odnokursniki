@@ -59,8 +59,8 @@ void destoy_client_base(chat_base_t* base) {
 
 
 ERR_STAT registr_client(chat_base_t* base, chat_session_t* session, const char* log_in_buf) {
-    char usr_name[NAME_SIZE] = {0};
-    char password[PSWD_SIZE] = {0};
+    char usr_name[NAME_SIZE + 1] = {0};
+    char password[PSWD_SIZE + 1] = {0};
 
     strncpy(usr_name, log_in_buf,  NAME_SIZE);
     strncpy(password, log_in_buf + NAME_SIZE, PSWD_SIZE);
@@ -107,13 +107,13 @@ ERR_STAT log_in_client(chat_base_t* base, chat_session_t* session, const char* a
         return ERR_STAT::SUCCESS;
     }
 
-    char username[NAME_SIZE] = {0};
+    char username[NAME_SIZE + 1] = {0};
     strncpy(username, authorization_buffer, NAME_SIZE);
 
     base_client_t* client = get_client(base, username);
 
-    if (client) {
-        char password[PSWD_SIZE] = {0};
+    if (client && strncmp(client->name, username, NAME_SIZE) == 0) {
+        char password[PSWD_SIZE + 1] = {0};
         strncpy(password, authorization_buffer + NAME_SIZE, PSWD_SIZE);
         uint64_t pswd_hash = base->hash_client(password);
 
@@ -134,7 +134,7 @@ ERR_STAT log_in_client(chat_base_t* base, chat_session_t* session, const char* a
 }
 
 base_client_t* log_out_client(chat_base_t* base, const char* log_out_buf) {
-    char usr_name[NAME_SIZE] = {0};
+    char usr_name[NAME_SIZE + 1] = {0};
 
     strncpy(usr_name, log_out_buf, NAME_SIZE);
 

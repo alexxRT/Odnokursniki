@@ -72,29 +72,22 @@ void set_client_username(client_t* client, const char* username) {
     size_t username_len = strlen(username);
     username_len = username_len > NAME_SIZE ? NAME_SIZE : username_len;
 
+    memset(client->username, 0, NAME_SIZE);
     memmove(client->username, username, username_len);
 }
 
 
-void call_networking_finalization(client_t* client) {
-    assert(client);
-    // if uv_loop wasnt finalized
-    if(uv_loop_alive(client->event_loop)) {
-        FPRINTF("event loop stop called\n");
-        call_async_stop();
-    }
-}
-
-
 void destroy_client(client_t* client) {
-    call_networking_finalization(client);
+    uv_sem_destroy(&client->backend_ready);
+    FREE(client->event_loop);
     delete client->incoming_msg;
 
     FREE(client);
 }
 
 pthread_t run_client_backend(client_t* client, size_t port, const char* ip) {
-    thread_args_t args = {};
+    thread_args_t& args = client->backend_args;
+    uv_sem_init(&client->backend_ready, 0);
 
     args.owner        = OWNER::CLIENT;
     args.owner_struct = (void*)client;
@@ -109,5 +102,6 @@ pthread_t run_client_backend(client_t* client, size_t port, const char* ip) {
 
     pthread_create(&networking_tid, NULL, start_networking, (void*)&args);
 
+    uv_sem_wait(&client->backend_ready);
     return networking_tid;
 }

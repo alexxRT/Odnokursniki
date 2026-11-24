@@ -34,8 +34,7 @@ ERR_STAT broadcast_message(server_t* server, chat_message_t* msg) {
     for (size_t i = 0; i < MAX_SESSIONS_COUNT; i ++) {
         chat_session_t* client_session = server->active_sessions + i;
         fprintf(stderr, "[INFO] session_id=[%llu], state=[%u]\n", client_session->client_id, client_session->state);
-        bool client_online = client_session->state == CLIENT_STATE::CONNECTED ||
-                             client_session->state == CLIENT_STATE::LOGGED_IN;
+        bool client_online = client_session->state == CLIENT_STATE::LOGGED_IN;
         if (client_online) send_message(server, client_session, msg);
     }
     return ERR_STAT::SUCCESS;
@@ -77,6 +76,7 @@ ERR_STAT send_message_text(client_t* client, const char addressant[NAME_SIZE],
 
     chat_message_t msg = create_chat_message(MSG_TYPE::TXT_MSG);
     msg.read_message(&msg, buffer);
+    destroy_type_buffer(buffer);
     return send_message(client, &msg);
 }
 
@@ -106,8 +106,12 @@ ERR_STAT send_message(client_t* client, chat_message_t* msg) {
     buffer_t* buf = create_type_buffer(msg->msg_type);
     msg->write_message(msg, buf);
 
-    call_async_write(client->session.client_stream, buf);
+    pthread_mutex_lock(&sessions_mutex);
+    bool connected = client->session.client_stream != NULL;
+    if (connected)
+        call_async_write(client->session.client_stream, buf);
+    pthread_mutex_unlock(&sessions_mutex);
     destroy_type_buffer(buf);
 
-    return ERR_STAT::SUCCESS;
+    return connected ? ERR_STAT::SUCCESS : ERR_STAT::CONNECTION_LOST;
 }

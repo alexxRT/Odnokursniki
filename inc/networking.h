@@ -19,6 +19,8 @@ typedef struct event {
 
 static net_event_t async_write_event;
 
+extern pthread_mutex_t sessions_mutex;
+
 //callbacks calls, used from different threads
 void call_async_write(uv_stream_t* write_dest, buffer_t* buf_to_write);
 void call_async_close(uv_handle_t* close_handle);

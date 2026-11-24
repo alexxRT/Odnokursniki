@@ -95,11 +95,19 @@ static void draw_dialog_win(gui_scene_t* scene) {
         ChatContact& client = contacts[state->active_client_idx];
         int max_lines = dialog->size.hight - 2;
         int msg_count = (int)client.messages.size();
-        int start = msg_count > max_lines ? msg_count - max_lines : 0;
-        int row = 1;
-        for (int i = start; i < msg_count; i++) {
-            mvwprintw(dialog->win, row, 1, "%s", client.messages[i].c_str());
-            row++;
+        int width = dialog->size.width - 2;
+        if (width > 0 && max_lines > 0) {
+            int rows = 0;
+            int end = msg_count - state->history_offset;
+            for (int i = end - 1; i >= 0 && rows < max_lines; --i)
+                rows += ((int)client.messages[i].size() + width - 1) / width;
+            int row = rows < max_lines ? rows : max_lines;
+            for (int i = end - 1; i >= 0 && row > 0; --i) {
+                const char* line = client.messages[i].c_str();
+                int parts = ((int)client.messages[i].size() + width - 1) / width;
+                while (parts > 0 && row > 0)
+                    mvwaddnstr(dialog->win, row--, 1, line + --parts * width, width);
+            }
         }
     }
 
@@ -155,20 +163,24 @@ void receive_chat_messages(gui_scene_t* scene) {
             }
         } else {
             bool sent = msg.msg_type == MSG_TYPE::ERROR_MSG && msg.sys_command == COMMAND::SEND_MESSAGE;
-            if (!sent && msg.msg_type != MSG_TYPE::TXT_MSG)
+            bool restored = msg.msg_type == MSG_TYPE::SYSTEM && msg.sys_command == COMMAND::CHAT_HISTORY;
+            bool outgoing = sent || (restored && !strncmp(msg.from, scene->client->username, NAME_SIZE));
+            if (!restored && !sent && msg.msg_type != MSG_TYPE::TXT_MSG)
                 continue;
-            int i = find_contact(sent ? msg.to : msg.from);
+            int i = find_contact(outgoing ? msg.to : msg.from);
             if (!i)
                 continue;
             char line[MSG_SIZE + NAME_SIZE + 4] = {};
             if (sent && msg.error_stat != ERR_STAT::SUCCESS)
                 snprintf(line, sizeof(line), "Message could not be delivered");
             else
-                snprintf(line, sizeof(line), "%.*s: %.*s", NAME_SIZE, sent ? "You" : msg.from, MSG_SIZE, msg.msg_body);
+                snprintf(line, sizeof(line), "%.*s: %.*s", NAME_SIZE, outgoing ? "You" : msg.from, MSG_SIZE, msg.msg_body);
             contacts[i].messages.emplace_back(line);
-            if (state->active_client_idx < 0)
+            if (state->active_client_idx < 0) {
                 state->active_client_idx = i;
-            if (!sent && state->active_client_idx != i)
+                state->highlight_idx = i;
+            }
+            if (!restored && !sent && state->active_client_idx != i)
                 contacts[i].unread++;
         }
         changed = true;
@@ -217,6 +229,18 @@ static void send_chat_message(gui_scene_t* scene) {
 void handle_chat_input_key(gui_scene_t* scene, int ch) {
     chat_win_state_t* state = get_chat_state(scene);
 
+    if (ch == KEY_PPAGE || ch == KEY_NPAGE) {
+        if (state->active_client_idx > 0) {
+            int count = (int)contacts[state->active_client_idx].messages.size();
+            int page = scene->windows[CHAT_DIALOG_WIN].size.hight - 2;
+            if (page < 1) page = 1;
+            state->history_offset += ch == KEY_PPAGE ? page : -page;
+            if (state->history_offset >= count) state->history_offset = count - 1;
+            if (state->history_offset < 0) state->history_offset = 0;
+            redraw_chat_scene(scene);
+        }
+        return;
+    }
     if (ch == KEY_RESIZE) {
         int screen_h = 0;
         int screen_w = 0;
@@ -350,6 +374,7 @@ static bool handle_chat_menu_enter(gui_scene_t* scene, gui_event_t* event) {
 
     state->active_client_idx = state->highlight_idx;
     contacts[state->active_client_idx].unread = 0;
+    state->history_offset = 0;
     memset(state->input_buf, 0, sizeof(state->input_buf));
     state->input_len = 0;
 

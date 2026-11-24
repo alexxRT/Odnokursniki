@@ -1,6 +1,7 @@
 #include "chat_base.h"
 #include "messages.h"
 #include "server.h"
+#include "dialog_history.h"
 #include "chat_configs.h"
 #include "networking.h"
 #include "sender.h"
@@ -87,10 +88,18 @@ server_t* create_server(size_t client_num) {
     server->incoming_msg = new ThreadSafeList<chat_message_t>(10);
     server->outgoing_msg = new ThreadSafeList<chat_message_t>(10);
 
+    server->history = open_dialog_history(server->client_base);
+    if (!server->history) {
+        fprintf(stderr, "Cannot load odnokursniki-data.txt\n");
+        destroy_server(server);
+        return NULL;
+    }
     return server;
 }
 
 void destroy_server(server_t* server) {
+    if (server->history)
+        fclose(server->history);
     destoy_client_base(server->client_base);
 
     delete server->incoming_msg;
@@ -129,7 +138,8 @@ cmd_result_t operate_command(server_t* server, chat_session_t* session, chat_mes
         memcpy(name, msg->msg_body, NAME_SIZE);
         if (session->state != CLIENT_STATE::CONNECTED || !name[0] || !msg->msg_body[NAME_SIZE])
             return {ERR_STAT::BAD_REQUEST, code};
-        if (get_current_session_by_name(server->active_sessions, server->client_base->hash_client(name)))
+        base_client_t* account = get_client(server->client_base, name);
+        if (account && get_current_session_by_name(server->active_sessions, account->name_hash))
             return {ERR_STAT::NAME_TAKEN, code};
     }
 
@@ -149,6 +159,16 @@ cmd_result_t operate_command(server_t* server, chat_session_t* session, chat_mes
 
         case COMMAND::REGISTR: {
             ERR_STAT REGISTERED = registr_client(server->client_base, session, msg->msg_body);
+
+            if (REGISTERED == ERR_STAT::SUCCESS) {
+                base_client_t* account = get_client(server->client_base, session->client_name);
+                if (!save_dialog_account(server->history, account, msg->msg_body + NAME_SIZE)) {
+                    *account = {};
+                    server->client_base->size--;
+                    session->client_name = 0;
+                    REGISTERED = ERR_STAT::BAD_OPERATE;
+                }
+            }
 
             fprintf(stderr, "[INFO] client regitered; session_id=[%llu]\n", session->client_id) ? REGISTERED == ERR_STAT::SUCCESS :
             fprintf(stderr, "[ERROR] client failed to register; session_id=[%llu]\n", session->client_id);
@@ -198,11 +218,9 @@ ERR_STAT operate_request(server_t* server, chat_session_t* session, chat_message
             char recipient[NAME_SIZE + 1] = {};
             memcpy(recipient, msg->to, NAME_SIZE);
             // find addressant session
-            uint64_t addressant_id = server->client_base->hash_client(recipient);
+            base_client_t* recipient_user = get_client(server->client_base, recipient);
+            uint64_t addressant_id = recipient_user ? recipient_user->name_hash : 0;
             chat_session_t* addressant_session = get_current_session_by_name(server->active_sessions, addressant_id);
-            base_client_t* recipient_user = get_client(server->client_base, addressant_id);
-            if (!recipient_user || strncmp(recipient_user->name, recipient, NAME_SIZE))
-                addressant_session = NULL;
             ERR_STAT send_status = addressant_session ? ERR_STAT::SUCCESS : ERR_STAT::CLIENT_OFFLINE;
 
             // check if online, otherwise drop message for now
@@ -211,7 +229,10 @@ ERR_STAT operate_request(server_t* server, chat_session_t* session, chat_message
                 fprintf(stderr, "[ERROR] Unable to send message to=[%.8s]; session_id=[%llu]\n", msg->to, session->client_id);
             } else {
                 fprintf(stderr, "[INFO] Retrnsmitting message: from=[%.8s], to=[%.8s]\n", msg->from, msg->to);
-                send_status = send_message(server, addressant_session, msg);
+                if (save_dialog_message(server->history, msg))
+                    send_status = send_message(server, addressant_session, msg);
+                else
+                    send_status = ERR_STAT::BAD_OPERATE;
             }
 
             chat_message_t status_msg = create_chat_message(MSG_TYPE::ERROR_MSG);
@@ -237,6 +258,8 @@ ERR_STAT operate_request(server_t* server, chat_session_t* session, chat_message
             if ((cmd_stat.command_id == COMMAND::LOG_IN || cmd_stat.command_id == COMMAND::REGISTR) &&
                 cmd_stat.status_id == ERR_STAT::SUCCESS) {
                 session->state = CLIENT_STATE::LOGGED_IN;
+                if (!restore_dialog_history(server, session))
+                    call_async_close((uv_handle_t*)session->client_stream);
                 send_online_list(server);
             }
         } break;

@@ -19,6 +19,8 @@ typedef struct base_client_ {
     uint64_t  name_hash;
     uint64_t  pswd_hash;
     STATUS status;
+    char salt[33];
+    char verifier[65];
 } base_client_t;
 
 typedef struct client_base_ {
@@ -26,6 +28,7 @@ typedef struct client_base_ {
     size_t  max_size;
     base_client_t* base;
     hash_base_t hash_client;
+    bool (*verify_password)(const base_client_t*, const char*);
 } chat_base_t;
 
 
@@ -51,7 +54,8 @@ int look_up_client(chat_base_t* base, uint64_t name_hash);
 int look_up_client(chat_base_t* base, uv_stream_t* endpoint);
 int look_up_client(chat_base_t* base, char* name);
 
-base_client_t* get_client(chat_base_t* base, char* name);
+uint64_t available_name_hash(chat_base_t* base, const char* name);
+base_client_t* get_client(chat_base_t* base, const char* name);
 base_client_t* get_client(chat_base_t* base, uint64_t clinet_id);
 base_client_t* get_client(chat_base_t* base, uv_stream_t* endpoint);
 // --------- //

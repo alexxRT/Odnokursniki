@@ -74,6 +74,10 @@ SceneResult scene_render(gui_scene_t* scene) {
         }
 
         int ch = getch();
+        if (chat_state && (ch == KEY_PPAGE || ch == KEY_NPAGE)) {
+            handle_chat_input_key(scene, ch);
+            continue;
+        }
         if (ch == 'q') {
             gui_event_t finalize_event = {.event_id = GUI_EVENT::FINALIZE};
             scene->pending_events->insert_head(finalize_event);

@@ -48,6 +48,7 @@ enum BROADCAST : int {
 typedef struct server_ {
     SERVER_STATUS status;
     chat_base_t* client_base;
+    FILE* history;
     ThreadSafeList<chat_message_t>* incoming_msg;
     ThreadSafeList<chat_message_t>* outgoing_msg;
     uv_loop_t* event_loop;

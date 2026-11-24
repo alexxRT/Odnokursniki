@@ -16,7 +16,8 @@ enum class COMMAND : uint64_t {
     ON_CLOSE      = 6,
     SHUTDOWN_SEND = 7,
     SEND_MESSAGE  = 8,
-    UNKNOWN       = 9
+    UNKNOWN       = 9,
+    CHAT_HISTORY  = 10
 };
 
 enum class STATUS : int {

@@ -48,10 +48,11 @@ add_subdirectory(inc/messages)
 
 # ==> Build tests
 
-add_executable(server server.cpp src/server.cpp src/chat_base.cpp src/networking.cpp src/sender.cpp src/chat_session.cpp)
+find_package(OpenSSL REQUIRED COMPONENTS Crypto)
+add_executable(server server.cpp src/dialog_history.cpp src/server.cpp src/chat_base.cpp src/networking.cpp src/sender.cpp src/chat_session.cpp)
 
 #target_link_libraries(server      PUBLIC ${LIBUV_LIBRARY} chat_msg list)
-target_link_libraries(server       PUBLIC uv_a chat_msg list)
+target_link_libraries(server       PUBLIC uv_a chat_msg list OpenSSL::Crypto)
 #target_include_directories(server PUBLIC ${LIBUV_INCLUDE} ${CMAKE_CURRENT_SOURCE_DIR}/inc)
 target_include_directories(server       PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/inc)
 

@@ -14,6 +14,7 @@ typedef struct chat_win_state {
     int active_client_idx;
     char input_buf[MAX_INPUT_LEN];
     int input_len;
+    int history_offset;
 } chat_win_state_t;
 
 chat_win_state_t* get_chat_state(gui_scene_t* scene);

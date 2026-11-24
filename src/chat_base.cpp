@@ -84,7 +84,7 @@ ERR_STAT registr_client(chat_base_t* base, chat_session_t* session, const char* 
     //add new user
     base_client_t new_client = {};
 
-    uint64_t name_hash = base->hash_client(usr_name);
+    uint64_t name_hash = available_name_hash(base, usr_name);
     uint64_t pswd_hash = base->hash_client(password);
     session->client_name = name_hash;
     new_client.name_hash = name_hash;
@@ -112,7 +112,7 @@ ERR_STAT log_in_client(chat_base_t* base, chat_session_t* session, const char* a
 
     base_client_t* client = get_client(base, username);
 
-    if (client && strncmp(client->name, username, NAME_SIZE) == 0) {
+    if (client) {
         char password[PSWD_SIZE + 1] = {0};
         strncpy(password, authorization_buffer + NAME_SIZE, PSWD_SIZE);
         uint64_t pswd_hash = base->hash_client(password);
@@ -120,7 +120,7 @@ ERR_STAT log_in_client(chat_base_t* base, chat_session_t* session, const char* a
         fprintf(stderr, "[INFO] Client found in database; session_id=[%llu]\n", session->client_id);
         fprintf(stderr, "[INFO] Validate client password; session_id=[%llu]\n", session->client_id);
 
-        if (client->pswd_hash == pswd_hash) {
+        if (base->verify_password ? base->verify_password(client, password) : client->pswd_hash == pswd_hash) {
             session->client_name = client->name_hash; // attach client name to support search by name
             return ERR_STAT::SUCCESS;
         }
@@ -197,14 +197,19 @@ base_client_t* get_client(chat_base_t* base, uint64_t name_hash) {
     return NULL;
 };
 
-base_client_t* get_client(chat_base_t* base, char* name) {
+uint64_t available_name_hash(chat_base_t* base, const char* name) {
+    uint64_t hash = base->hash_client(name);
+    while (!hash || get_client(base, hash))
+        ++hash;
+    return hash;
+}
+
+base_client_t* get_client(chat_base_t* base, const char* name) {
     assert(base);
     assert(name);
 
-    uint64_t name_hash = base->hash_client(name);
-
     for (size_t i = 0; i < base->size; i ++) {
-        if (name_hash == base->base[i].name_hash)
+        if (strncmp(name, base->base[i].name, NAME_SIZE) == 0)
             return base->base + i;
     }
 
